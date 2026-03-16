@@ -1,0 +1,28 @@
+node_modules/
+dist/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+.vite/
+
+# Environment
+.env.local
+.env.*.local
+
+# Data
+data/
+*.db
+*.sqlite
+
+# Runtime
+memory/
+sessions/
+
+# Internal (not for open-source repo)
+features/
+global-dashboard/
+works/
+works.md
+test-images/
+.claude/

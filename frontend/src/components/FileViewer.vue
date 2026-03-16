@@ -1,0 +1,154 @@
+<template>
+  <div class="file-viewer">
+    <!-- Empty state -->
+    <div v-if="store.currentAgent && !store.currentFile" class="status-content">
+      <AgentSessions />
+    </div>
+    <div v-else-if="!store.currentFile" class="empty-state">
+      <div class="empty-icon">📂</div>
+      <p>{{ t('fileViewer.selectFile') }}</p>
+      <p class="empty-hint">{{ t('fileViewer.expandAgent') }}</p>
+    </div>
+
+    <!-- File content -->
+    <div v-else class="file-content">
+      <!-- Toolbar -->
+      <FileToolbar />
+
+      <!-- Loading -->
+      <div v-if="store.loading" class="content-loading">
+        <el-icon class="is-loading" :size="32"><Loading /></el-icon>
+      </div>
+
+      <!-- Editor mode -->
+      <div v-else-if="store.isEditing" class="editor-wrapper">
+        <CodeEditor
+          :value="store.editContent"
+          :language="store.displayLanguage"
+          @update:value="store.editContent = $event"
+        />
+      </div>
+
+      <!-- View mode -->
+      <div v-else class="view-wrapper">
+        <MarkdownRenderer
+          v-if="store.displayLanguage === 'markdown'"
+          :content="store.displayContent"
+        />
+        <div v-else class="code-view">
+          <pre><code v-html="highlightedCode"></code></pre>
+        </div>
+      </div>
+
+      <!-- Footer: file path -->
+      <div class="file-footer">
+        <span class="host-path">📁 {{ store.currentFile.host_path }}</span>
+      </div>
+    </div>
+
+    <!-- Version history drawer -->
+    <VersionDrawer />
+  </div>
+</template>
+
+<script setup>
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { Loading } from '@element-plus/icons-vue'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/github.css'
+import { useAgentStore } from '../stores/agent'
+import FileToolbar from './FileToolbar.vue'
+import MarkdownRenderer from './MarkdownRenderer.vue'
+import CodeEditor from './CodeEditor.vue'
+import AgentSessions from './AgentSessions.vue'
+import VersionDrawer from './VersionDrawer.vue'
+
+const { t } = useI18n()
+const store = useAgentStore()
+
+const highlightedCode = computed(() => {
+  if (!store.currentFile) return ''
+  const lang = store.displayLanguage
+  const code = store.displayContent
+  try {
+    if (hljs.getLanguage(lang)) {
+      return hljs.highlight(code, { language: lang }).value
+    }
+  } catch {}
+  return hljs.highlightAuto(code).value
+})
+</script>
+
+<style scoped>
+.file-viewer {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.status-content {
+  flex: 1;
+  overflow-y: auto;
+}
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #909399;
+}
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+.empty-hint {
+  font-size: 13px;
+  margin-top: 8px;
+}
+.file-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.content-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.view-wrapper {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+.editor-wrapper {
+  flex: 1;
+  overflow: hidden;
+}
+.code-view {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.code-view pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.file-footer {
+  padding: 8px 16px;
+  background: #f5f7fa;
+  border-top: 1px solid #e4e7ed;
+  font-size: 12px;
+  color: #606266;
+  display: flex;
+  align-items: center;
+}
+.host-path {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>
