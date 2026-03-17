@@ -215,6 +215,34 @@ def list_skill_files(agent_name: str, skill_name: str) -> list[dict]:
     return _walk(skill_dir, "")
 
 
+def list_all_agent_files(agent_name: str) -> list[dict]:
+    """Recursively list ALL files in an agent workspace as a flat list.
+    Returns [{"path": "relative/path", "content": "..."}].
+    Skips .git, __pycache__, node_modules, .cache directories."""
+    agent_dir = _agent_path(agent_name)
+    if not agent_dir.exists():
+        return []
+
+    skip_dirs = {".git", "__pycache__", "node_modules", ".cache"}
+    result = []
+
+    for root, dirs, files in os.walk(agent_dir):
+        dirs[:] = [d for d in dirs if d not in skip_dirs]
+        for fname in sorted(files):
+            fpath = Path(root) / fname
+            rel_path = str(fpath.relative_to(agent_dir))
+            try:
+                content = fpath.read_text(encoding="utf-8", errors="replace")
+            except Exception:
+                continue
+            result.append({
+                "path": rel_path,
+                "content": content,
+            })
+
+    return result
+
+
 def write_file(agent_name: str, rel_path: str, content: str) -> dict:
     """Write content back to the original file. DANGEROUS — overwrites the real file."""
     agent_dir = _agent_path(agent_name)

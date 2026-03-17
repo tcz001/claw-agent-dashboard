@@ -210,5 +210,14 @@ export default {
     blueprintDeleted: 'Blueprint deleted',
     fileAdded: 'File added',
     fileDeleted: 'File deleted',
+    // Import from agent
+    importFromAgent: 'Import from Agent',
+    importSourceAgent: 'Source Agent',
+    importSourceAgentPlaceholder: 'Select an agent to import files from...',
+    excludePatterns: 'Exclude Patterns',
+    excludePatternsPlaceholder: 'One glob pattern per line, e.g.:\nmemories/*\nlogs/*',
+    importSuccess: 'Blueprint created, imported {count} files',
+    importNoFiles: 'Blueprint created, but no files matched for import',
+    blueprintCreateFailed: 'Failed to create blueprint',
   },
 }

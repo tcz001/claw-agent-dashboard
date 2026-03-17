@@ -115,8 +115,15 @@ export const useBlueprintStore = defineStore('blueprint', () => {
     currentBlueprint.value = await fetchBlueprint(currentBlueprint.value.id)
   }
 
-  async function createNewBlueprint(name, description) {
-    const bp = await apiCreate({ name, description })
+  async function createNewBlueprint(name, description, sourceAgentId = null, excludePatterns = null) {
+    const data = { name, description }
+    if (sourceAgentId) {
+      data.source_agent_id = sourceAgentId
+    }
+    if (excludePatterns && excludePatterns.length > 0) {
+      data.exclude_patterns = excludePatterns
+    }
+    const bp = await apiCreate(data)
     await loadBlueprints()
     return bp
   }

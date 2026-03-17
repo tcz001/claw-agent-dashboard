@@ -210,5 +210,14 @@ export default {
     blueprintDeleted: '蓝图已删除',
     fileAdded: '文件已添加',
     fileDeleted: '文件已删除',
+    // Import from agent
+    importFromAgent: '从 Agent 导入',
+    importSourceAgent: '来源 Agent',
+    importSourceAgentPlaceholder: '选择要导入文件的 Agent...',
+    excludePatterns: '排除规则',
+    excludePatternsPlaceholder: '每行一个 glob 模式，例如：\nmemories/*\nlogs/*',
+    importSuccess: '蓝图已创建，导入了 {count} 个文件',
+    importNoFiles: '蓝图已创建，但没有匹配的文件可导入',
+    blueprintCreateFailed: '创建蓝图失败',
   },
 }

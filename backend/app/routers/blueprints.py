@@ -12,6 +12,8 @@ router = APIRouter(prefix="/blueprints", tags=["blueprints"])
 class BlueprintCreate(BaseModel):
     name: str
     description: str = ""
+    source_agent_id: int | None = None
+    exclude_patterns: list[str] | None = None
 
 
 class BlueprintUpdate(BaseModel):
@@ -63,13 +65,21 @@ async def list_blueprints():
 
 @router.post("")
 async def create_blueprint(body: BlueprintCreate):
+    """Create a new blueprint, optionally importing files from an existing agent."""
     try:
         return await blueprint_service.create_blueprint(
-            name=body.name, description=body.description
+            name=body.name,
+            description=body.description,
+            source_agent_id=body.source_agent_id,
+            exclude_patterns=body.exclude_patterns,
         )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
     except Exception as e:
         if "UNIQUE constraint" in str(e):
-            raise HTTPException(400, "Blueprint with this name already exists")
+            raise HTTPException(409, f"Blueprint '{body.name}' already exists")
         raise HTTPException(500, str(e))
 
 

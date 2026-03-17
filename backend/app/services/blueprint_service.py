@@ -1,5 +1,7 @@
 """Blueprint service — CRUD, derive, sync orchestration."""
+import fnmatch
 import logging
+from pathlib import PurePosixPath
 
 from . import version_db, file_service, variable_service
 from .template_engine import render_template, extract_variable_names
@@ -7,14 +9,80 @@ from .template_engine import render_template, extract_variable_names
 logger = logging.getLogger(__name__)
 
 
-async def create_blueprint(name: str, description: str = "") -> dict:
-    """Create a new blueprint with a virtual agent record."""
+def _matches_exclude_pattern(file_path: str, patterns: list[str]) -> bool:
+    """Check if a file path matches any exclude pattern.
+    Patterns with '/' match against the full relative path.
+    Patterns without '/' match against the basename only."""
+    basename = PurePosixPath(file_path).name
+    for pattern in patterns:
+        if '/' in pattern:
+            if fnmatch.fnmatch(file_path, pattern):
+                return True
+        else:
+            if fnmatch.fnmatch(basename, pattern):
+                return True
+    return False
+
+
+async def create_blueprint(name: str, description: str = "",
+                           source_agent_id: int | None = None,
+                           exclude_patterns: list[str] | None = None) -> dict:
+    """Create a new blueprint with a virtual agent record.
+    Optionally import files from an existing agent."""
     workspace_name = f"_blueprint-{name}"
     agent_id = await version_db.get_or_create_virtual_agent(workspace_name)
     blueprint = await version_db.create_blueprint(
         name=name, description=description, agent_id=agent_id
     )
-    return blueprint
+
+    imported_file_count = 0
+
+    if source_agent_id is not None:
+        # Validate source agent
+        db = await version_db.get_db()
+        cursor = await db.execute(
+            "SELECT id, workspace_name, is_virtual FROM agents WHERE id = ?",
+            (source_agent_id,)
+        )
+        source_agent = await cursor.fetchone()
+        if not source_agent:
+            raise FileNotFoundError("Source agent not found")
+        if source_agent["is_virtual"]:
+            raise ValueError("Cannot import from a blueprint's virtual agent")
+
+        # Verify workspace directory exists on filesystem
+        from pathlib import Path
+        from ..config import AGENTS_DIR
+        workspace_dir = Path(AGENTS_DIR) / source_agent["workspace_name"]
+        if not workspace_dir.exists():
+            raise FileNotFoundError(
+                f"Agent workspace directory not found: {source_agent['workspace_name']}"
+            )
+
+        # Get all files from agent workspace
+        agent_files = file_service.list_all_agent_files(source_agent["workspace_name"])
+
+        # Filter by exclude patterns
+        patterns = exclude_patterns or []
+        if patterns:
+            agent_files = [
+                f for f in agent_files
+                if not _matches_exclude_pattern(f["path"], patterns)
+            ]
+
+        # Import each file as a blueprint template
+        for f in agent_files:
+            await version_db.create_template(
+                agent_id=blueprint["agent_id"],
+                file_path=f["path"],
+                content=f["content"],
+            )
+            imported_file_count += 1
+
+    return {
+        **blueprint,
+        "imported_file_count": imported_file_count,
+    }
 
 
 async def get_blueprint(blueprint_id: int) -> dict | None:

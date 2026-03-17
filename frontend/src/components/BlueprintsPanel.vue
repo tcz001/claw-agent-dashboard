@@ -138,7 +138,8 @@
     <el-dialog
       v-model="store.createDialogVisible"
       :title="t('management.createBlueprint')"
-      width="460px"
+      width="500px"
+      @close="resetCreateForm"
     >
       <el-input
         v-model="newName"
@@ -152,9 +153,46 @@
         :rows="3"
         class="dialog-input"
       />
+      <el-divider />
+      <el-form-item style="margin-bottom: 12px">
+        <el-switch
+          v-model="importFromAgent"
+          :active-text="t('management.importFromAgent')"
+        />
+      </el-form-item>
+      <template v-if="importFromAgent">
+        <el-form-item :label="t('management.importSourceAgent')" style="margin-bottom: 12px">
+          <el-select
+            v-model="selectedAgentId"
+            :placeholder="t('management.importSourceAgentPlaceholder')"
+            filterable
+            clearable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="agent in availableAgents"
+              :key="agent.id"
+              :label="agent.display_name || agent.name"
+              :value="agent.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item :label="t('management.excludePatterns')" style="margin-bottom: 0">
+          <el-input
+            v-model="excludePatternsText"
+            type="textarea"
+            :rows="4"
+            :placeholder="t('management.excludePatternsPlaceholder')"
+          />
+        </el-form-item>
+      </template>
       <template #footer>
         <el-button @click="store.createDialogVisible = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="handleCreate">{{ t('common.confirm') }}</el-button>
+        <el-button
+          type="primary"
+          :disabled="!newName.trim() || (importFromAgent && !selectedAgentId)"
+          @click="handleCreate"
+        >{{ t('common.confirm') }}</el-button>
       </template>
     </el-dialog>
 
@@ -185,11 +223,13 @@ import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useBlueprintStore } from '../stores/blueprint'
+import { useAgentStore } from '../stores/agent'
 import CodeEditor from './CodeEditor.vue'
 import DeriveAgentDialog from './DeriveAgentDialog.vue'
 
 const { t } = useI18n()
 const store = useBlueprintStore()
+const agentStore = useAgentStore()
 
 // Local state
 const newName = ref('')
@@ -197,7 +237,19 @@ const newDescription = ref('')
 const addFileDialogVisible = ref(false)
 const newFilePath = ref('')
 
-onMounted(() => store.loadBlueprints())
+// Import from agent state
+const importFromAgent = ref(false)
+const selectedAgentId = ref(null)
+const excludePatternsText = ref('memories/*\nlogs/*')
+
+const availableAgents = computed(() => agentStore.agents || [])
+
+onMounted(async () => {
+  store.loadBlueprints()
+  if (!agentStore.agents || agentStore.agents.length === 0) {
+    await agentStore.loadAgents()
+  }
+})
 
 // File tree computed
 const coreFiles = computed(() =>
@@ -232,15 +284,43 @@ const editorLanguage = computed(() => {
 // Handlers
 async function handleCreate() {
   if (!newName.value.trim()) return
-  try {
-    await store.createNewBlueprint(newName.value.trim(), newDescription.value.trim())
-    ElMessage.success(t('management.blueprintCreated'))
-    store.createDialogVisible = false
-    newName.value = ''
-    newDescription.value = ''
-  } catch {
-    ElMessage.error(t('management.createFailed'))
+
+  let sourceAgentId = null
+  let excludePatterns = null
+
+  if (importFromAgent.value && selectedAgentId.value) {
+    sourceAgentId = selectedAgentId.value
+    excludePatterns = excludePatternsText.value
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0)
   }
+
+  try {
+    const result = await store.createNewBlueprint(
+      newName.value.trim(), newDescription.value.trim(),
+      sourceAgentId, excludePatterns
+    )
+    if (sourceAgentId && result.imported_file_count > 0) {
+      ElMessage.success(t('management.importSuccess', { count: result.imported_file_count }))
+    } else if (sourceAgentId && result.imported_file_count === 0) {
+      ElMessage.warning(t('management.importNoFiles'))
+    } else {
+      ElMessage.success(t('management.blueprintCreated'))
+    }
+    store.createDialogVisible = false
+    resetCreateForm()
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || t('management.blueprintCreateFailed'))
+  }
+}
+
+function resetCreateForm() {
+  newName.value = ''
+  newDescription.value = ''
+  importFromAgent.value = false
+  selectedAgentId.value = null
+  excludePatternsText.value = 'memories/*\nlogs/*'
 }
 
 async function handleDelete(bp) {
