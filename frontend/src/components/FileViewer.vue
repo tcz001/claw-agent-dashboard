@@ -62,7 +62,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Loading } from '@element-plus/icons-vue'
 import hljs from 'highlight.js'
@@ -111,6 +111,22 @@ const highlightedCode = computed(() => {
   } catch {}
   return hljs.highlightAuto(code).value
 })
+
+watch(() => store.targetLineNumber, async (lineNum) => {
+  if (!lineNum) return
+  await nextTick()
+  // For code view: scroll to approximate position
+  const codeView = document.querySelector('.code-view pre code')
+  if (codeView) {
+    const lineHeight = 22.4  // approximate line height in px (14px font * 1.6 line-height)
+    const scrollContainer = document.querySelector('.view-wrapper')
+    if (scrollContainer) {
+      scrollContainer.scrollTop = (lineNum - 1) * lineHeight - scrollContainer.clientHeight / 3
+    }
+  }
+  // Clear after scrolling
+  store.targetLineNumber = null
+}, { flush: 'post' })
 </script>
 
 <style scoped>

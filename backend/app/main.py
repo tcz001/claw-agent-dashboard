@@ -8,7 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from .routers import agents, translate, settings, global_skills, status, versions, variables, templates, blueprints, agent_changes
+from .config import ES_URL
+from .routers import agents, translate, settings, global_skills, status, versions, variables, templates, blueprints, agent_changes, search
 from .services import version_db, change_detector, blueprint_service
 
 
@@ -18,8 +19,16 @@ async def lifespan(app: FastAPI):
     await version_db.init_db()
     await blueprint_service.initialize_blueprint_dirs()
     await change_detector.start_detector(interval=30)
+    # Start session indexer if ES is configured
+    _session_indexer = None
+    if ES_URL:
+        from .services.session_indexer import SessionIndexer
+        _session_indexer = SessionIndexer()
+        await _session_indexer.start()
     yield
     # Shutdown
+    if _session_indexer:
+        await _session_indexer.stop()
     await change_detector.stop_detector()
     await version_db.close_db()
 
@@ -46,6 +55,7 @@ app.include_router(variables.router, prefix="/api")
 app.include_router(templates.router, prefix="/api")
 app.include_router(blueprints.router, prefix="/api")
 app.include_router(agent_changes.router, prefix="/api")
+app.include_router(search.router, prefix="/api/search")
 
 # Serve frontend static files (production build)
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"

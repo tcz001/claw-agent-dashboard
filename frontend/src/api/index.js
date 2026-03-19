@@ -150,3 +150,10 @@ export const rejectAllAgentPendingChanges = (agentName) => api.post(`/agents/${a
 export const fetchBlueprintFileVersions = (bpId, filePath) => api.get(`/blueprints/${bpId}/files/${filePath}/versions`).then(r => r.data)
 export const fetchBlueprintFileVersion = (bpId, filePath, versionNum) => api.get(`/blueprints/${bpId}/files/${filePath}/versions/${versionNum}`).then(r => r.data)
 export const restoreBlueprintFileVersion = (bpId, filePath, versionNum) => api.post(`/blueprints/${bpId}/files/${filePath}/restore/${versionNum}`).then(r => r.data)
+
+// Search
+export const fetchSearchStatus = () => api.get('/search/status').then(r => r.data)
+export const searchFiles = (scope, name, query, caseSensitive = false, maxResults = 200) =>
+  api.get('/search/files', { params: { scope, name, query, case_sensitive: caseSensitive, max_results: maxResults } }).then(r => r.data)
+export const searchSessions = (agentName, query, maxResults = 50) =>
+  api.get('/search/sessions', { params: { agent_name: agentName, query, max_results: maxResults } }).then(r => r.data)

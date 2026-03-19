@@ -1,6 +1,57 @@
 <template>
   <div class="file-tree-panel">
-    <el-scrollbar>
+    <!-- Search input -->
+    <div class="search-box">
+      <el-input
+        v-model="store.fileSearchQuery"
+        :placeholder="t('search.placeholder')"
+        :prefix-icon="Search"
+        clearable
+        size="small"
+        @keyup.enter="handleSearch"
+        @clear="store.clearFileSearch()"
+      />
+    </div>
+
+    <!-- Search results view -->
+    <el-scrollbar v-if="store.fileSearchResults">
+      <div v-if="store.fileSearchLoading" class="search-loading">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        {{ t('search.searching') }}
+      </div>
+      <div v-else-if="store.fileSearchResults.total_matches === 0" class="search-empty">
+        {{ t('search.noResults') }}
+      </div>
+      <div v-else class="search-results">
+        <div class="search-summary">
+          {{ t('search.matchCount', { count: store.fileSearchResults.total_matches, files: store.fileSearchResults.results.length }) }}
+        </div>
+        <div v-for="fileResult in store.fileSearchResults.results" :key="fileResult.file_path" class="search-file-group">
+          <div class="search-file-header" @click="toggleSearchFile(fileResult.file_path)">
+            <el-icon style="font-size: 10px">
+              <ArrowRight v-if="collapsedSearchFiles.has(fileResult.file_path)" />
+              <ArrowDown v-else />
+            </el-icon>
+            <span class="search-file-name">{{ fileResult.file_path }}</span>
+            <span class="search-match-count">{{ fileResult.matches.length }}</span>
+          </div>
+          <div v-if="!collapsedSearchFiles.has(fileResult.file_path)" class="search-matches">
+            <div
+              v-for="match in fileResult.matches"
+              :key="match.line_number"
+              class="search-match-item"
+              @click="openSearchResult(fileResult.file_path, match.line_number)"
+            >
+              <span class="search-line-num">{{ match.line_number }}</span>
+              <span class="search-line-content" v-html="highlightMatch(match.line_content, store.fileSearchQuery)"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-scrollbar>
+
+    <!-- Normal file tree view -->
+    <el-scrollbar v-else>
       <!-- Blueprint derivation badge -->
       <span v-if="store.derivationStatus?.is_derived" class="derived-badge">
         🔗 {{ t('management.derivedFrom', { name: store.derivationStatus.blueprint_name }) }}
@@ -158,6 +209,7 @@ import { useI18n } from 'vue-i18n'
 import {
   Folder, Document, Files,
   ArrowRight, ArrowDown,
+  Search, Loading,
 } from '@element-plus/icons-vue'
 import { useAgentStore } from '../stores/agent'
 import FileTree from './FileTree.vue'
@@ -170,6 +222,36 @@ const expandedGlobalSkills = reactive({})
 const globalSkillsExpanded = ref(false)
 const memoryExpanded = ref(false)
 const otherFilesExpanded = ref(false)
+
+const collapsedSearchFiles = ref(new Set())
+
+function handleSearch() {
+  if (store.fileSearchQuery.trim()) {
+    collapsedSearchFiles.value = new Set()
+    store.searchAgentFiles(store.fileSearchQuery)
+  }
+}
+
+function toggleSearchFile(filePath) {
+  const next = new Set(collapsedSearchFiles.value)
+  if (next.has(filePath)) {
+    next.delete(filePath)
+  } else {
+    next.add(filePath)
+  }
+  collapsedSearchFiles.value = next
+}
+
+function openSearchResult(filePath, lineNumber) {
+  store.selectFile(filePath, lineNumber)
+}
+
+function highlightMatch(text, query) {
+  if (!query) return text
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escaped})`, 'gi')
+  return text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(regex, '<mark>$1</mark>')
+}
 
 async function toggleSkill(skillName) {
   expandedSkills[skillName] = !expandedSkills[skillName]
@@ -325,5 +407,86 @@ async function toggleGlobalSkill(source, skillName) {
 }
 .source-skills {
   padding-left: 12px;
+}
+.search-box {
+  padding: 8px 12px 4px;
+  flex-shrink: 0;
+}
+.search-loading, .search-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: #909399;
+  font-size: 13px;
+}
+.search-summary {
+  padding: 4px 16px;
+  font-size: 11px;
+  color: #909399;
+}
+.search-file-group {
+  margin-bottom: 2px;
+}
+.search-file-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #606266;
+  background: #f0f2f5;
+}
+.search-file-header:hover {
+  background: #ebeef5;
+}
+.search-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+}
+.search-match-count {
+  font-size: 10px;
+  color: #909399;
+  background: #e4e7ed;
+  padding: 0 6px;
+  border-radius: 8px;
+}
+.search-match-item {
+  display: flex;
+  gap: 8px;
+  padding: 3px 16px 3px 28px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.5;
+  transition: background 0.15s;
+}
+.search-match-item:hover {
+  background: #ebeef5;
+}
+.search-line-num {
+  color: #909399;
+  font-family: monospace;
+  min-width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.search-line-content {
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #303133;
+}
+.search-line-content :deep(mark) {
+  background: #ffd54f;
+  color: #333;
+  padding: 0 1px;
+  border-radius: 2px;
 }
 </style>

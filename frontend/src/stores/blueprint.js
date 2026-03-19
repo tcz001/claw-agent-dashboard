@@ -54,6 +54,11 @@ export const useBlueprintStore = defineStore('blueprint', () => {
   const versionPreviewContent = ref(null)
   const versionPreviewNum = ref(null)
 
+  // File search
+  const fileSearchQuery = ref('')
+  const fileSearchResults = ref(null)
+  const fileSearchLoading = ref(false)
+
   // Actions
   async function loadBlueprints() {
     loading.value = true
@@ -267,6 +272,30 @@ export const useBlueprintStore = defineStore('blueprint', () => {
     }
   }
 
+  // --- File Search ---
+  async function searchBlueprintFiles(query) {
+    if (!currentBlueprint.value?.name || !query.trim()) {
+      fileSearchResults.value = null
+      return
+    }
+    fileSearchLoading.value = true
+    try {
+      const { searchFiles: searchFilesApi } = await import('../api')
+      const result = await searchFilesApi('blueprint', currentBlueprint.value.name, query)
+      fileSearchResults.value = result
+    } catch (e) {
+      console.error('Blueprint file search failed:', e)
+      fileSearchResults.value = { query, total_matches: 0, results: [] }
+    } finally {
+      fileSearchLoading.value = false
+    }
+  }
+
+  function clearFileSearch() {
+    fileSearchQuery.value = ''
+    fileSearchResults.value = null
+  }
+
   return {
     blueprints, loading, currentBlueprint, currentFile,
     editContent, saving,
@@ -284,5 +313,8 @@ export const useBlueprintStore = defineStore('blueprint', () => {
     versionDrawerOpen, versionFilePath, versionList, versionLoading,
     versionPreviewContent, versionPreviewNum,
     openVersionDrawer, closeVersionDrawer, viewVersion, restoreVersion,
+    // File search
+    fileSearchQuery, fileSearchResults, fileSearchLoading,
+    searchBlueprintFiles, clearFileSearch,
   }
 })

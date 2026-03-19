@@ -77,7 +77,54 @@
       <div v-loading="store.loading" class="editor-layout">
         <!-- Left: File tree -->
         <div class="file-tree-panel">
-          <div class="file-tree-list">
+          <div class="search-box">
+            <el-input
+              v-model="store.fileSearchQuery"
+              :placeholder="t('search.placeholder')"
+              :prefix-icon="Search"
+              clearable
+              size="small"
+              @keyup.enter="handleBlueprintSearch"
+              @clear="store.clearFileSearch()"
+            />
+          </div>
+
+          <!-- Search results -->
+          <div v-if="store.fileSearchResults" class="file-tree-list">
+            <div v-if="store.fileSearchLoading" class="search-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              {{ t('search.searching') }}
+            </div>
+            <div v-else-if="store.fileSearchResults.total_matches === 0" class="search-empty">
+              {{ t('search.noResults') }}
+            </div>
+            <div v-else class="search-results">
+              <div class="search-summary">
+                {{ t('search.matchCount', { count: store.fileSearchResults.total_matches, files: store.fileSearchResults.results.length }) }}
+              </div>
+              <div v-for="fileResult in store.fileSearchResults.results" :key="fileResult.file_path" class="search-file-group">
+                <div class="search-file-header" @click="toggleSearchFile(fileResult.file_path)">
+                  <span class="dir-arrow">{{ collapsedSearchFiles.has(fileResult.file_path) ? '▶' : '▼' }}</span>
+                  <span class="search-file-name">{{ fileResult.file_path }}</span>
+                  <span class="search-match-count">{{ fileResult.matches.length }}</span>
+                </div>
+                <div v-if="!collapsedSearchFiles.has(fileResult.file_path)" class="search-matches">
+                  <div
+                    v-for="match in fileResult.matches"
+                    :key="match.line_number"
+                    class="search-match-item"
+                    @click="openSearchResult(fileResult.file_path, match.line_number)"
+                  >
+                    <span class="search-line-num">{{ match.line_number }}</span>
+                    <span class="search-line-content" v-html="highlightMatch(match.line_content, store.fileSearchQuery)"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Normal file tree -->
+          <div v-else class="file-tree-list">
             <template v-for="node in flattenedTree" :key="node.path || node.dirPath">
               <div
                 v-if="node.type === 'dir'"
@@ -377,6 +424,7 @@ import CodeEditor from './CodeEditor.vue'
 import DeriveAgentDialog from './DeriveAgentDialog.vue'
 import BlueprintDiffView from './BlueprintDiffView.vue'
 import VariableDialog from './VariableDialog.vue'
+import { Search, Loading } from '@element-plus/icons-vue'
 
 const { t } = useI18n()
 const store = useBlueprintStore()
@@ -392,6 +440,35 @@ const newFilePath = ref('')
 const variablesDrawerVisible = ref(false)
 const expandedVersionId = ref(null)
 const restoringVersion = ref(false)
+
+// File search
+const collapsedSearchFiles = ref(new Set())
+
+function handleBlueprintSearch() {
+  if (store.fileSearchQuery.trim()) {
+    collapsedSearchFiles.value = new Set()
+    store.searchBlueprintFiles(store.fileSearchQuery)
+  }
+}
+
+function toggleSearchFile(filePath) {
+  const next = new Set(collapsedSearchFiles.value)
+  if (next.has(filePath)) next.delete(filePath)
+  else next.add(filePath)
+  collapsedSearchFiles.value = next
+}
+
+function openSearchResult(filePath, lineNumber) {
+  store.clearFileSearch()
+  store.selectFile(filePath)
+}
+
+function highlightMatch(text, query) {
+  if (!query) return text
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escaped})`, 'gi')
+  return text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(regex, '<mark>$1</mark>')
+}
 
 // Import from agent state
 const importFromAgent = ref(false)
@@ -887,6 +964,89 @@ async function handleRestoreVersion(versionNum) {
 }
 .add-file-btn {
   margin-top: 8px;
+}
+
+/* File search */
+.search-box {
+  padding: 6px 8px;
+  flex-shrink: 0;
+}
+.search-loading, .search-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: #909399;
+  font-size: 13px;
+}
+.search-summary {
+  padding: 4px 8px;
+  font-size: 11px;
+  color: #909399;
+}
+.search-file-group {
+  margin-bottom: 2px;
+}
+.search-file-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: #bbb;
+  background: rgba(255, 255, 255, 0.03);
+}
+.search-file-header:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.search-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+}
+.search-match-count {
+  font-size: 10px;
+  color: #909399;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 0 6px;
+  border-radius: 8px;
+}
+.search-match-item {
+  display: flex;
+  gap: 8px;
+  padding: 3px 8px 3px 20px;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.5;
+  transition: background 0.15s;
+}
+.search-match-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.search-line-num {
+  color: #909399;
+  font-family: monospace;
+  min-width: 28px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.search-line-content {
+  font-family: monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #bbb;
+}
+.search-line-content :deep(mark) {
+  background: #ffd54f;
+  color: #333;
+  padding: 0 1px;
+  border-radius: 2px;
 }
 
 /* Editor panel */

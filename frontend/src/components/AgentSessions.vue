@@ -35,7 +35,48 @@
               <el-button size="small" type="primary" :icon="Plus" @click="openNewSession">{{ t('agentSessions.newBtn') }}</el-button>
             </div>
           </div>
-          <div class="session-list-scroll">
+          <div v-if="store.sessionSearchEnabled" class="session-search-box">
+            <el-input
+              v-model="store.sessionSearchQuery"
+              :placeholder="t('search.sessionPlaceholder')"
+              :prefix-icon="Search"
+              clearable
+              size="small"
+              @keyup.enter="handleSessionSearch"
+              @clear="store.clearSessionSearch()"
+            />
+          </div>
+          <!-- Session search results -->
+          <div v-if="store.sessionSearchResults" class="session-list-scroll">
+            <div v-if="store.sessionSearchLoading" class="search-loading">
+              <el-icon class="is-loading"><Loading /></el-icon>
+              {{ t('search.searching') }}
+            </div>
+            <div v-else-if="store.sessionSearchResults.total_matches === 0" class="search-empty">
+              {{ t('search.sessionNoResults') }}
+            </div>
+            <div v-else class="session-search-results">
+              <div class="search-summary">
+                {{ t('search.sessionMatchCount', { count: store.sessionSearchResults.total_matches }) }}
+              </div>
+              <div
+                v-for="(result, idx) in store.sessionSearchResults.results"
+                :key="idx"
+                class="session-search-item"
+                @click="openSessionSearchResult(result)"
+              >
+                <div class="ssr-header">
+                  <el-tag size="small" type="info">{{ result.channel }}</el-tag>
+                  <el-tag size="small">{{ result.chat_type }}</el-tag>
+                  <el-tag size="small" :type="result.role === 'user' ? '' : 'success'">{{ result.role }}</el-tag>
+                </div>
+                <div class="ssr-content" v-html="highlightSnippet(result.content_snippet, store.sessionSearchQuery)"></div>
+                <div class="ssr-time">{{ formatTimestamp(result.timestamp) }}</div>
+              </div>
+            </div>
+          </div>
+          <!-- Normal session list -->
+          <div v-else class="session-list-scroll">
             <div
               v-for="sess in detail.agent.sessions"
               :key="sess.session_id"
@@ -165,7 +206,7 @@
 
 <script setup>
 import { computed, ref, onMounted, onUnmounted } from 'vue'
-import { Loading, Refresh, ChatDotRound, Plus } from '@element-plus/icons-vue'
+import { Loading, Refresh, ChatDotRound, Plus, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useAgentStore } from '../stores/agent'
 import SessionMessages from './SessionMessages.vue'
@@ -373,6 +414,37 @@ async function submitSwitchModel() {
   }
 }
 
+function handleSessionSearch() {
+  if (store.sessionSearchQuery.trim()) {
+    store.searchSessionMessages(store.sessionSearchQuery)
+  }
+}
+
+function openSessionSearchResult(result) {
+  store.selectSession(result.session_id)
+  const page = Math.floor(result.message_index / store.sessionPageSize) + 1
+  store.loadSessionPage(result.session_id, page, false)
+}
+
+function highlightSnippet(text, query) {
+  if (!text || !query) return text || ''
+  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(`(${escaped})`, 'gi')
+  return text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(regex, '<mark>$1</mark>')
+}
+
+function formatTimestamp(ts) {
+  if (!ts) return ''
+  const date = new Date(ts)
+  const now = new Date()
+  const diffMs = now - date
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHour = Math.floor(diffMin / 60)
+  if (diffHour < 24) return `${diffHour}h ago`
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
 // Drag to resize split pane
 function startDrag(e) {
   isDragging = true
@@ -401,6 +473,7 @@ function stopDrag() {
 
 onMounted(() => {
   store.startStatusAutoRefresh(10000)
+  store.checkSearchCapabilities()
 })
 
 onUnmounted(() => {
@@ -574,4 +647,58 @@ onUnmounted(() => {
 .cache-low { color: var(--el-color-danger); }
 
 .empty-tip { padding: 16px; text-align: center; color: var(--el-text-color-placeholder); }
+
+.session-search-box {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  flex-shrink: 0;
+}
+.search-loading, .search-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: var(--el-text-color-placeholder);
+  font-size: 13px;
+}
+.search-summary {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+.session-search-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin: 2px 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.session-search-item:hover {
+  background: var(--el-fill-color-light);
+}
+.ssr-header {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.ssr-content {
+  font-size: 12px;
+  color: var(--el-text-color-regular);
+  line-height: 1.5;
+  max-height: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ssr-content :deep(mark) {
+  background: #ffd54f;
+  color: #333;
+  padding: 0 1px;
+  border-radius: 2px;
+}
+.ssr-time {
+  font-size: 10px;
+  color: var(--el-text-color-placeholder);
+  margin-top: 4px;
+}
 </style>

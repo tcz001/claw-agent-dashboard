@@ -101,6 +101,20 @@ export const useAgentStore = defineStore('agent', () => {
   const pendingChanges = ref([])
   const pendingLoading = ref(false)
 
+  // File search state
+  const fileSearchQuery = ref('')
+  const fileSearchResults = ref(null) // null = not searching, object = results
+  const fileSearchLoading = ref(false)
+
+  // Session search state
+  const sessionSearchEnabled = ref(false)
+  const sessionSearchQuery = ref('')
+  const sessionSearchResults = ref(null)
+  const sessionSearchLoading = ref(false)
+
+  // Target line number for FileViewer line jump (from search results)
+  const targetLineNumber = ref(null)
+
   const filteredAgents = computed(() => {
     if (!selectedBlueprint.value) return agents.value
     return agents.value.filter(a => a.blueprint_name === selectedBlueprint.value)
@@ -212,7 +226,7 @@ export const useAgentStore = defineStore('agent', () => {
     skillFilesMap.value[skillName] = files
   }
 
-  async function selectFile(path) {
+  async function selectFile(path, targetLine = null) {
     if (!currentAgent.value) return
     loading.value = true
     showTranslation.value = false
@@ -241,6 +255,7 @@ export const useAgentStore = defineStore('agent', () => {
         // Template raw content for editing
         editContent.value = templateStore.currentTemplate?.content || currentFile.value.content
       }
+      targetLineNumber.value = targetLine
     } finally {
       loading.value = false
     }
@@ -815,6 +830,63 @@ export const useAgentStore = defineStore('agent', () => {
     variablesDrawerOpen.value = false
   }
 
+  // Search actions
+  async function searchAgentFiles(query) {
+    if (!currentAgent.value?.name || !query.trim()) {
+      fileSearchResults.value = null
+      return
+    }
+    fileSearchLoading.value = true
+    try {
+      const { searchFiles: searchFilesApi } = await import('../api')
+      const result = await searchFilesApi('agent', currentAgent.value.name, query)
+      fileSearchResults.value = result
+    } catch (e) {
+      console.error('File search failed:', e)
+      fileSearchResults.value = { query, total_matches: 0, results: [] }
+    } finally {
+      fileSearchLoading.value = false
+    }
+  }
+
+  function clearFileSearch() {
+    fileSearchQuery.value = ''
+    fileSearchResults.value = null
+  }
+
+  async function searchSessionMessages(query) {
+    if (!currentAgent.value?.name || !query.trim()) {
+      sessionSearchResults.value = null
+      return
+    }
+    sessionSearchLoading.value = true
+    try {
+      const { searchSessions: searchSessionsApi } = await import('../api')
+      const result = await searchSessionsApi(currentAgent.value.name, query)
+      sessionSearchResults.value = result
+    } catch (e) {
+      console.error('Session search failed:', e)
+      sessionSearchResults.value = { query, total_matches: 0, results: [] }
+    } finally {
+      sessionSearchLoading.value = false
+    }
+  }
+
+  function clearSessionSearch() {
+    sessionSearchQuery.value = ''
+    sessionSearchResults.value = null
+  }
+
+  async function checkSearchCapabilities() {
+    try {
+      const { fetchSearchStatus } = await import('../api')
+      const status = await fetchSearchStatus()
+      sessionSearchEnabled.value = status.session_search
+    } catch {
+      sessionSearchEnabled.value = false
+    }
+  }
+
   return {
     agents,
     currentAgent,
@@ -933,5 +1005,13 @@ export const useAgentStore = defineStore('agent', () => {
     rejectAllChanges,
     startPendingPolling,
     stopPendingPolling,
+    // Search
+    fileSearchQuery, fileSearchResults, fileSearchLoading,
+    sessionSearchEnabled, sessionSearchQuery, sessionSearchResults, sessionSearchLoading,
+    searchAgentFiles, clearFileSearch,
+    searchSessionMessages, clearSessionSearch,
+    checkSearchCapabilities,
+    // Target line for FileViewer
+    targetLineNumber,
   }
 })

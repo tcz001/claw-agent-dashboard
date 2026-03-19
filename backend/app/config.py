@@ -33,3 +33,8 @@ GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://host.docker.internal:18789")
 
 # Gateway authentication token
 GATEWAY_TOKEN = os.environ.get("GATEWAY_TOKEN", "")
+
+# Elasticsearch (optional — session search)
+ES_URL = os.environ.get("ES_URL", "")
+ES_INDEX_PREFIX = os.environ.get("ES_INDEX_PREFIX", "openclaw_sessions")
+ES_SYNC_INTERVAL = int(os.environ.get("ES_SYNC_INTERVAL", "60"))

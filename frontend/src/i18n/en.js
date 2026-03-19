@@ -304,4 +304,14 @@ export default {
     override: 'Override',
     newVariable: '+ New Agent Variable',
   },
+  search: {
+    placeholder: 'Search file contents...',
+    searching: 'Searching...',
+    noResults: 'No results found',
+    matchCount: '{count} match(es) in {files} file(s)',
+    lineNumber: 'Line {n}',
+    sessionPlaceholder: 'Search session messages...',
+    sessionNoResults: 'No matching messages',
+    sessionMatchCount: '{count} match(es)',
+  },
 }

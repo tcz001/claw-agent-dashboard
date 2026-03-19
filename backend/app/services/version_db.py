@@ -157,6 +157,21 @@ async def init_db():
     """)
     await db.commit()
 
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS session_index_state (
+            id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_name            TEXT NOT NULL,
+            session_id            TEXT NOT NULL,
+            file_path             TEXT NOT NULL,
+            indexed_lines         INTEGER NOT NULL DEFAULT 0,
+            file_size             INTEGER NOT NULL DEFAULT 0,
+            session_start_datetime TEXT,
+            last_indexed_at       TEXT,
+            UNIQUE(agent_name, session_id)
+        )
+    """)
+    await db.commit()
+
     # Partial unique indexes for variables (added after executescript)
     await db.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_variables_global_unique

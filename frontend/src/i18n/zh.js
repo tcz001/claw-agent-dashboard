@@ -304,4 +304,14 @@ export default {
     override: '覆盖',
     newVariable: '+ 新建 Agent 变量',
   },
+  search: {
+    placeholder: '搜索文件内容...',
+    searching: '搜索中...',
+    noResults: '未找到结果',
+    matchCount: '{files} 个文件中 {count} 个匹配',
+    lineNumber: '第 {n} 行',
+    sessionPlaceholder: '搜索会话消息...',
+    sessionNoResults: '没有匹配的消息',
+    sessionMatchCount: '{count} 个匹配',
+  },
 }
