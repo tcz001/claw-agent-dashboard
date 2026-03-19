@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, nextTick } from 'vue'
 import {
   fetchAgents,
   fetchAgentFiles,
@@ -257,9 +257,14 @@ export const useAgentStore = defineStore('agent', () => {
         // Template raw content for editing
         editContent.value = templateStore.currentTemplate?.content || currentFile.value.content
       }
-      targetLineNumber.value = targetLine
+      // targetLineNumber is set in finally block after loading=false
     } finally {
       loading.value = false
+      // Set targetLineNumber AFTER loading=false so MarkdownRenderer is mounted
+      if (targetLine != null) {
+        await nextTick()
+        targetLineNumber.value = targetLine
+      }
     }
   }
 

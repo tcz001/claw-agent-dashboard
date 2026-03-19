@@ -185,6 +185,8 @@
               v-model:value="store.editContent"
               :language="editorLanguage"
               :variable-map="variableMap"
+              :target-line="blueprintTargetLine"
+              @highlight-done="blueprintTargetLine = null"
             />
           </template>
           <div v-else class="no-file-selected">
@@ -443,6 +445,7 @@ const restoringVersion = ref(false)
 
 // File search
 const collapsedSearchFiles = ref(new Set())
+const blueprintTargetLine = ref(null)
 
 function handleBlueprintSearch() {
   if (store.fileSearchQuery.trim()) {
@@ -458,9 +461,9 @@ function toggleSearchFile(filePath) {
   collapsedSearchFiles.value = next
 }
 
-function openSearchResult(filePath, lineNumber) {
-  store.clearFileSearch()
-  store.selectFile(filePath)
+async function openSearchResult(filePath, lineNumber) {
+  await store.selectFile(filePath)
+  blueprintTargetLine.value = lineNumber
 }
 
 function highlightMatch(text, query) {

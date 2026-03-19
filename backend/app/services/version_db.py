@@ -164,6 +164,7 @@ async def init_db():
             session_id            TEXT NOT NULL,
             file_path             TEXT NOT NULL,
             indexed_lines         INTEGER NOT NULL DEFAULT 0,
+            indexed_messages      INTEGER NOT NULL DEFAULT 0,
             file_size             INTEGER NOT NULL DEFAULT 0,
             session_start_datetime TEXT,
             last_indexed_at       TEXT,
@@ -237,6 +238,15 @@ async def init_db():
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Variables migration: {e}")
+
+    # Migration: add indexed_messages to session_index_state
+    try:
+        await db.execute(
+            "ALTER TABLE session_index_state ADD COLUMN indexed_messages INTEGER NOT NULL DEFAULT 0"
+        )
+        await db.commit()
+    except Exception:
+        pass  # Column already exists
 
 
 async def close_db():

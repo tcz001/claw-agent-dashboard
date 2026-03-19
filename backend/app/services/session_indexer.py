@@ -191,7 +191,7 @@ class SessionIndexer:
 
                 # Check indexed state
                 cursor = await db.execute(
-                    "SELECT indexed_lines, file_size, session_start_datetime FROM session_index_state WHERE agent_name=? AND session_id=?",
+                    "SELECT indexed_lines, file_size, session_start_datetime, indexed_messages FROM session_index_state WHERE agent_name=? AND session_id=?",
                     (agent_name, session_id),
                 )
                 row = await cursor.fetchone()
@@ -199,6 +199,7 @@ class SessionIndexer:
                 if row:
                     prev_size = row[1]
                     prev_lines = row[0]
+                    prev_messages = row[3] if row[3] else 0
 
                     if file_size == prev_size:
                         continue  # No change
@@ -218,9 +219,11 @@ class SessionIndexer:
                             await es.indices.delete(index=current_idx)
 
                         prev_lines = 0
+                        prev_messages = 0
                         # Will re-index from scratch below
                 else:
                     prev_lines = 0
+                    prev_messages = 0
 
                 # Read and index new lines
                 try:
@@ -258,6 +261,7 @@ class SessionIndexer:
                 await _ensure_index(es, current_idx)
 
                 actions = []
+                msg_count = prev_messages
                 for i, line in enumerate(new_lines):
                     try:
                         entry = json.loads(line.strip())
@@ -291,7 +295,7 @@ class SessionIndexer:
                         "session_id": session_id,
                         "session_key": session_key or "",
                         "session_start_datetime": (session_start or row[2]) if row else session_start,
-                        "message_index": prev_lines + i,
+                        "message_index": msg_count,
                         "role": role,
                         "content": content[:10000],  # Limit content size
                         "timestamp": entry.get("timestamp") or datetime.now(timezone.utc).isoformat(),
@@ -301,20 +305,22 @@ class SessionIndexer:
 
                     actions.append({"index": {"_index": current_idx}})
                     actions.append(doc)
+                    msg_count += 1
 
                 if actions:
                     await es.bulk(body=actions, refresh="false")
 
                 # Update indexed state
                 await db.execute(
-                    """INSERT INTO session_index_state (agent_name, session_id, file_path, indexed_lines, file_size, session_start_datetime, last_indexed_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """INSERT INTO session_index_state (agent_name, session_id, file_path, indexed_lines, indexed_messages, file_size, session_start_datetime, last_indexed_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT(agent_name, session_id) DO UPDATE SET
                          indexed_lines=excluded.indexed_lines,
+                         indexed_messages=excluded.indexed_messages,
                          file_size=excluded.file_size,
                          session_start_datetime=COALESCE(excluded.session_start_datetime, session_start_datetime),
                          last_indexed_at=excluded.last_indexed_at""",
-                    (agent_name, session_id, str(jsonl_file), len(all_lines), file_size,
+                    (agent_name, session_id, str(jsonl_file), len(all_lines), msg_count, file_size,
                      session_start, datetime.now(timezone.utc).isoformat()),
                 )
                 await db.commit()

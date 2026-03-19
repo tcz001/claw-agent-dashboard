@@ -168,16 +168,32 @@ watch(() => store.targetLineNumber, async (lineNum) => {
   if (highlightTimeout) clearTimeout(highlightTimeout)
 
   if (store.displayLanguage === 'markdown') {
-    // Markdown mode: find matching text in rendered DOM
+    // Markdown mode: find the target line text in rendered DOM
     const container = markdownRef.value?.$el
-    if (container && store.fileSearchQuery) {
-      const query = store.fileSearchQuery.toLowerCase()
+    if (container) {
+      const query = store.fileSearchQuery
+      if (!query) { store.targetLineNumber = null; return }
+
+      // Count how many times the query appears in source lines BEFORE lineNum
+      const sourceLines = (store.displayContent || '').split('\n')
+      let occurrenceBefore = 0
+      for (let i = 0; i < lineNum - 1; i++) {
+        if ((sourceLines[i] || '').toLowerCase().includes(query.toLowerCase())) {
+          occurrenceBefore++
+        }
+      }
+
+      // Walk the rendered DOM and find the Nth occurrence of query text
       const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
       let targetNode = null
+      let matchCount = 0
       while (walker.nextNode()) {
-        if (walker.currentNode.textContent.toLowerCase().includes(query)) {
-          targetNode = walker.currentNode
-          break
+        if (walker.currentNode.textContent.toLowerCase().includes(query.toLowerCase())) {
+          if (matchCount === occurrenceBefore) {
+            targetNode = walker.currentNode
+            break
+          }
+          matchCount++
         }
       }
       if (targetNode) {

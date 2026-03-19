@@ -11,9 +11,10 @@ const props = defineProps({
   language: { type: String, default: 'markdown' },
   readOnly: { type: Boolean, default: false },
   variableMap: { type: Object, default: () => ({}) },
+  targetLine: { type: Number, default: null },
 })
 
-const emit = defineEmits(['update:value'])
+const emit = defineEmits(['update:value', 'highlight-done'])
 
 const editorContainer = ref(null)
 let editor = null
@@ -93,6 +94,31 @@ watch(() => props.language, (newLang) => {
   }
 })
 
+// Target line: scroll to line and highlight
+let lineHighlightDecorations = []
+let lineHighlightTimeout = null
+
+watch(() => props.targetLine, (lineNum) => {
+  if (!lineNum || !editor) return
+  if (lineHighlightTimeout) clearTimeout(lineHighlightTimeout)
+
+  editor.revealLineInCenter(lineNum)
+  lineHighlightDecorations = editor.deltaDecorations(lineHighlightDecorations, [{
+    range: new monaco.Range(lineNum, 1, lineNum, 1),
+    options: {
+      isWholeLine: true,
+      className: 'highlight-target-line',
+    },
+  }])
+
+  lineHighlightTimeout = setTimeout(() => {
+    lineHighlightDecorations = editor.deltaDecorations(lineHighlightDecorations, [])
+    lineHighlightTimeout = null
+  }, 4000)
+
+  emit('highlight-done')
+}, { flush: 'post' })
+
 onBeforeUnmount(() => {
   if (editor) {
     editor.dispose()
@@ -111,5 +137,8 @@ onBeforeUnmount(() => {
   background-color: rgba(233, 69, 96, 0.15);
   outline: 1px solid rgba(233, 69, 96, 0.3);
   border-radius: 3px;
+}
+:deep(.highlight-target-line) {
+  background: rgba(255, 213, 79, 0.4);
 }
 </style>
