@@ -20,10 +20,12 @@ import {
   fetchSessionMessages,
   fetchModels,
   createNewSession as apiCreateNewSession,
+  switchSessionModel as apiSwitchSessionModel,
   fetchFileVersions as apiFetchVersions,
   fetchVersionDetail as apiFetchVersionDetail,
   restoreVersion as apiRestoreVersion,
   fetchVersionDiff as apiFetchVersionDiff,
+  fetchAgentVariables as apiFetchAgentVariables,
 } from '../api'
 import { useTemplateStore } from './template'
 
@@ -219,8 +221,17 @@ export const useAgentStore = defineStore('agent', () => {
     try {
       const templateStore = useTemplateStore()
       if (templateStore.currentTemplate) {
+        // If the template is inherited from blueprint, detach first
+        if (templateStore.isInherited) {
+          const { detachFromBlueprint } = await import('../api')
+          await detachFromBlueprint(currentAgent.value.name, currentFile.value.path)
+          // Reload template so we now have the agent's own copy
+          await templateStore.loadTemplate(currentAgent.value.id, currentFile.value.path)
+        }
         await templateStore.saveTemplate(editContent.value, commitMsg)
         currentFile.value.content = templateStore.renderedContent
+        // Refresh derivation status to reflect the new override
+        await loadDerivationStatus()
         return true
       }
       // else: fallback to existing direct save for global files
@@ -548,8 +559,12 @@ export const useAgentStore = defineStore('agent', () => {
     }
   }
 
-  async function createSession(agent, model, message, sessionKey) {
-    return await apiCreateNewSession(agent, model, message, sessionKey)
+  async function createSession(agent, sessionKey = null) {
+    return await apiCreateNewSession(agent, sessionKey)
+  }
+
+  async function switchModel(agent, model, sessionKey) {
+    return await apiSwitchSessionModel(agent, model, sessionKey)
   }
 
   // Computed
@@ -570,7 +585,6 @@ export const useAgentStore = defineStore('agent', () => {
   const versionTotal = ref(0)
   const versionLoading = ref(false)
   const versionDiff = ref(null)
-  const versionPreview = ref(null) // version content being previewed
 
   const isVersionManaged = computed(() => {
     if (!currentFile.value) return false
@@ -627,14 +641,39 @@ export const useAgentStore = defineStore('agent', () => {
   function openVersionDrawer() {
     versionDrawerOpen.value = true
     versionDiff.value = null
-    versionPreview.value = null
     fetchVersions()
   }
 
   function closeVersionDrawer() {
     versionDrawerOpen.value = false
     versionDiff.value = null
-    versionPreview.value = null
+  }
+
+  // Variables drawer
+  const variablesDrawerOpen = ref(false)
+  const agentVariables = ref([])
+  const agentVariablesLoading = ref(false)
+
+  async function loadAgentVariables() {
+    if (!currentAgent.value?.id) return
+    agentVariablesLoading.value = true
+    try {
+      agentVariables.value = await apiFetchAgentVariables(currentAgent.value.id)
+    } catch (e) {
+      console.error('Failed to load agent variables:', e)
+      agentVariables.value = []
+    } finally {
+      agentVariablesLoading.value = false
+    }
+  }
+
+  function openVariablesDrawer() {
+    variablesDrawerOpen.value = true
+    loadAgentVariables()
+  }
+
+  function closeVariablesDrawer() {
+    variablesDrawerOpen.value = false
   }
 
   return {
@@ -710,13 +749,13 @@ export const useAgentStore = defineStore('agent', () => {
     defaultModel,
     loadModels,
     createSession,
+    switchModel,
     // Version history
     versionDrawerOpen,
     versionList,
     versionTotal,
     versionLoading,
     versionDiff,
-    versionPreview,
     isVersionManaged,
     fetchVersions,
     fetchVersionDetail,
@@ -729,5 +768,12 @@ export const useAgentStore = defineStore('agent', () => {
     loadDerivationStatus,
     isFileOverridden,
     isFileSynced,
+    // Variables drawer
+    variablesDrawerOpen,
+    agentVariables,
+    agentVariablesLoading,
+    loadAgentVariables,
+    openVariablesDrawer,
+    closeVariablesDrawer,
   }
 })

@@ -28,6 +28,17 @@
       </div>
     </div>
 
+    <!-- Preview mode -->
+    <div v-else-if="previewContent !== null" class="preview-view">
+      <div class="preview-header">
+        <el-button size="small" @click="previewContent = null; previewNum = null">
+          &larr; {{ t('versionDrawer.backToList') }}
+        </el-button>
+        <span class="preview-title">v{{ previewNum }} {{ t('versionDrawer.preview') }}</span>
+      </div>
+      <pre class="preview-content">{{ previewContent }}</pre>
+    </div>
+
     <!-- Version list -->
     <div v-else>
       <div v-if="store.versionLoading" class="loading-state">
@@ -107,6 +118,8 @@ const restoring = ref(false)
 const diffMode = ref(false)
 const diffFrom = ref(0)
 const diffTo = ref(0)
+const previewContent = ref(null)
+const previewNum = ref(null)
 
 const diffLines = computed(() => {
   if (!store.versionDiff) return []
@@ -149,11 +162,9 @@ function formatTime(ts) {
 async function previewVersion(versionId) {
   try {
     const detail = await store.fetchVersionDetail(versionId)
-    store.versionPreview = detail
-    // Show in FileViewer as read-only preview
-    if (store.currentFile && detail) {
-      store.currentFile._versionPreview = detail.content
-      store.currentFile._versionNum = detail.version_num
+    if (detail) {
+      previewContent.value = detail.content
+      previewNum.value = detail.version_num
     }
   } catch (e) {
     ElMessage.error(t('versionDrawer.fetchFailed'))
@@ -325,5 +336,34 @@ function loadMore() {
 }
 .diff-ctx {
   color: #57606a;
+}
+/* Preview view */
+.preview-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.preview-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.preview-content {
+  flex: 1;
+  overflow: auto;
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: #f5f7fa;
+  padding: 12px;
+  border-radius: 4px;
 }
 </style>

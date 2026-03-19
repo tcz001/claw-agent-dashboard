@@ -5,34 +5,27 @@
       <span class="file-name">{{ store.currentFile?.name }}</span>
       <el-tag v-if="store.showTranslation" size="small" type="warning">{{ t('fileToolbar.chineseTranslation') }}</el-tag>
       <el-tag v-else size="small" type="info">{{ t('fileToolbar.original') }}</el-tag>
+      <!-- Inherited from blueprint badge -->
+      <el-tag
+        v-if="store.derivationStatus?.is_derived && templateStore.isInherited"
+        size="small"
+        type="warning"
+        effect="light"
+      >📌 From blueprint (will detach on save)</el-tag>
     </div>
     <div class="toolbar-right">
-      <!-- Resync from Blueprint button (for overridden files in derived agents) -->
+      <!-- Restore to Blueprint button (for overridden files in derived agents) -->
       <el-popconfirm
         v-if="store.derivationStatus?.is_derived && store.isFileOverridden(store.currentFile?.path)"
-        :title="t('management.resyncConfirm', { file: store.currentFile?.name })"
-        :confirm-button-text="t('management.confirmResync')"
+        title="Restore this file to its blueprint version? Your local changes will be lost."
+        confirm-button-text="Restore"
         :cancel-button-text="t('common.cancel')"
-        @confirm="doResync"
-      >
-        <template #reference>
-          <el-button size="small" type="warning" :icon="Refresh">
-            {{ t('management.resyncFromBlueprint') }}
-          </el-button>
-        </template>
-      </el-popconfirm>
-
-      <!-- Restore All from Blueprint button (for derived agents with any overrides) -->
-      <el-popconfirm
-        v-if="store.derivationStatus?.is_derived && hasAnyOverrides"
-        :title="t('management.resyncAllConfirm')"
-        :confirm-button-text="t('management.confirmResyncAll')"
-        :cancel-button-text="t('common.cancel')"
-        @confirm="doResyncAll"
+        confirm-button-type="danger"
+        @confirm="doRestoreToBlueprint"
       >
         <template #reference>
           <el-button size="small" type="danger" :icon="Refresh">
-            {{ t('management.resyncAllFromBlueprint') }}
+            ↩ Restore to Blueprint
           </el-button>
         </template>
       </el-popconfirm>
@@ -82,6 +75,14 @@
         :icon="Clock"
         @click="store.openVersionDrawer()"
       >{{ t('fileToolbar.versionHistory') }}</el-button>
+
+      <!-- Variables button -->
+      <el-button
+        v-if="store.currentAgent"
+        size="small"
+        :icon="Setting"
+        @click="store.openVariablesDrawer()"
+      >{{ t('fileToolbar.variables') }}</el-button>
 
       <!-- Edit / View toggle -->
       <el-button
@@ -141,22 +142,19 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
-import { Document, EditPen, View, DocumentCopy, MagicStick, Upload, Clock, Refresh } from '@element-plus/icons-vue'
+import { Document, EditPen, View, DocumentCopy, MagicStick, Upload, Clock, Refresh, Setting } from '@element-plus/icons-vue'
 import { useAgentStore } from '../stores/agent'
-import { resyncFile, resyncAll } from '../api'
+import { useTemplateStore } from '../stores/template'
+import { restoreToBlueprint } from '../api'
 
 const { t } = useI18n()
 const store = useAgentStore()
+const templateStore = useTemplateStore()
 const showSaveDialog = ref(false)
 const commitMsg = ref('')
-
-const hasAnyOverrides = computed(() => {
-  const files = store.derivationStatus?.files
-  return files?.some(f => f.is_overridden) || false
-})
 
 async function doBatchTranslate() {
   try {
@@ -197,29 +195,15 @@ async function copyContent() {
   }
 }
 
-async function doResync() {
+async function doRestoreToBlueprint() {
   try {
-    await resyncFile(store.currentAgent.name, store.currentFile.path)
-    ElMessage.success(t('management.resyncSuccess'))
+    await restoreToBlueprint(store.currentAgent.name, store.currentFile.path)
+    ElMessage.success('File restored to blueprint version')
     // Reload file content and derivation status
     await store.selectFile(store.currentFile.path)
     await store.loadDerivationStatus()
   } catch (e) {
-    ElMessage.error(t('management.resyncFailed'))
-  }
-}
-
-async function doResyncAll() {
-  try {
-    await resyncAll(store.currentAgent.name)
-    ElMessage.success(t('management.resyncAllSuccess'))
-    // Reload current file and derivation status
-    if (store.currentFile) {
-      await store.selectFile(store.currentFile.path)
-    }
-    await store.loadDerivationStatus()
-  } catch (e) {
-    ElMessage.error(t('management.resyncAllFailed'))
+    ElMessage.error('Restore failed: ' + (e.response?.data?.detail || e.message || e))
   }
 }
 </script>

@@ -67,12 +67,22 @@ async def get_available_models():
 
 class NewSessionRequest(BaseModel):
     agent: str
-    model: str | None = None
-    message: str
-    session_key: str | None = None  # Channel session key for binding
+    session_key: str | None = None  # bind to existing channel session (native /new behavior)
 
 
 @router.post("/status/session/new")
 async def create_new_session(req: NewSessionRequest):
-    """Create a new session by proxying to the Gateway API."""
-    return await status_service.create_new_session(req.agent, req.model, req.message, req.session_key)
+    """Create a new session by sending /new to the Gateway."""
+    return await status_service.create_new_session(req.agent, req.session_key)
+
+
+class SwitchModelRequest(BaseModel):
+    agent: str
+    model: str
+    session_key: str
+
+
+@router.post("/status/session/model")
+async def switch_session_model(req: SwitchModelRequest):
+    """Switch model for an existing session via Gateway WebSocket RPC."""
+    return await status_service.switch_session_model(req.agent, req.model, req.session_key)

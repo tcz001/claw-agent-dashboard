@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import {
   lookupTemplate,
   fetchRenderedTemplate,
@@ -12,6 +12,12 @@ export const useTemplateStore = defineStore('template', () => {
   const renderWarnings = ref([])
   const templateLoading = ref(false)
   const _agentId = ref(null)
+
+  // Whether the current template is inherited from a blueprint (not owned by the agent)
+  const isInherited = computed(() => {
+    if (!currentTemplate.value || !_agentId.value) return false
+    return currentTemplate.value.agent_id !== _agentId.value
+  })
 
   async function loadTemplate(agentId, filePath) {
     templateLoading.value = true
@@ -51,6 +57,7 @@ export const useTemplateStore = defineStore('template', () => {
 
   return {
     currentTemplate, renderedContent, renderWarnings, templateLoading,
+    isInherited,
     loadTemplate, saveTemplate, clearTemplate,
   }
 })

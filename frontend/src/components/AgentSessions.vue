@@ -30,7 +30,10 @@
         <div class="session-list-panel" :style="{ width: leftPanelWidth + 'px' }">
           <div class="session-list-header">
             <span class="session-list-title">{{ t('agentSessions.sessions') }}</span>
-            <el-button size="small" type="primary" :icon="Plus" @click="openNewSession">{{ t('agentSessions.newBtn') }}</el-button>
+            <div style="display: flex; gap: 6px;">
+              <el-button size="small" @click="openSwitchModel">{{ t('agentSessions.switchModel') }}</el-button>
+              <el-button size="small" type="primary" :icon="Plus" @click="openNewSession">{{ t('agentSessions.newBtn') }}</el-button>
+            </div>
           </div>
           <div class="session-list-scroll">
             <div
@@ -100,36 +103,40 @@
       </div>
     </template>
 
-    <!-- New Session Dialog -->
+    <!-- New Session Confirm Dialog -->
     <el-dialog
       v-model="newSessionVisible"
       :title="t('agentSessions.newSession')"
-      width="500px"
+      width="400px"
       :close-on-click-modal="false"
       @close="closeNewSession"
     >
+      <p>{{ t('agentSessions.newSessionConfirm') }}</p>
+      <template #footer>
+        <el-button @click="closeNewSession">{{ t('common.cancel') }}</el-button>
+        <el-button
+          type="primary"
+          :loading="newSessionLoading"
+          @click="submitNewSession"
+        >
+          {{ t('agentSessions.confirm') }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- Switch Model Dialog -->
+    <el-dialog
+      v-model="switchModelVisible"
+      :title="t('agentSessions.switchModel')"
+      width="450px"
+      :close-on-click-modal="false"
+      @close="closeSwitchModel"
+    >
       <el-form label-position="top">
-        <el-form-item :label="t('agentSessions.bindChannel')">
+        <el-form-item :label="t('agentSessions.selectModel')">
           <el-select
-            v-model="newSessionChannel"
-            :placeholder="t('agentSessions.standalone')"
-            clearable
-            style="width: 100%;"
-          >
-            <el-option
-              v-for="sess in (detail?.agent?.sessions || [])"
-              :key="sess.session_key"
-              :label="`${sess.channel} (${sess.chat_type})`"
-              :value="sess.session_key"
-            />
-          </el-select>
-          <div class="form-hint">{{ t('agentSessions.bindDescription') }}</div>
-        </el-form-item>
-        <el-form-item :label="t('agentSessions.model')">
-          <el-select
-            v-model="newSessionModel"
+            v-model="switchModelId"
             :placeholder="t('agentSessions.selectModel')"
-            clearable
             style="width: 100%;"
           >
             <el-option
@@ -140,25 +147,16 @@
             />
           </el-select>
         </el-form-item>
-        <el-form-item :label="t('agentSessions.initialMessage')">
-          <el-input
-            v-model="newSessionMessage"
-            type="textarea"
-            :rows="5"
-            :placeholder="t('agentSessions.inputPlaceholder')"
-            @keydown.ctrl.enter="submitNewSession"
-          />
-        </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="closeNewSession">{{ t('common.cancel') }}</el-button>
+        <el-button @click="closeSwitchModel">{{ t('common.cancel') }}</el-button>
         <el-button
           type="primary"
-          :loading="newSessionLoading"
-          :disabled="!newSessionMessage.trim()"
-          @click="submitNewSession"
+          :loading="switchModelLoading"
+          :disabled="!switchModelId"
+          @click="submitSwitchModel"
         >
-          {{ t('agentSessions.send') }}
+          {{ t('common.confirm') }}
         </el-button>
       </template>
     </el-dialog>
@@ -184,10 +182,12 @@ let dragStartWidth = 0
 
 // New session dialog state
 const newSessionVisible = ref(false)
-const newSessionModel = ref('')
-const newSessionMessage = ref('')
 const newSessionLoading = ref(false)
-const newSessionChannel = ref('')
+
+// Switch model dialog state
+const switchModelVisible = ref(false)
+const switchModelLoading = ref(false)
+const switchModelId = ref('')
 
 const detail = computed(() => store.agentDetail)
 const refreshing = computed(() => store.statusLoading)
@@ -290,39 +290,33 @@ function refresh() {
 
 // New session dialog
 async function openNewSession() {
-  if (!store.availableModels.length) {
-    await store.loadModels()
-  }
-  newSessionModel.value = store.defaultModel || ''
-  newSessionMessage.value = ''
-  const sessions = detail.value?.agent?.sessions || []
-  newSessionChannel.value = sessions.length > 0 ? sessions[0].session_key : ''
   newSessionVisible.value = true
 }
 
 function closeNewSession() {
   newSessionVisible.value = false
-  newSessionMessage.value = ''
-  newSessionChannel.value = ''
   newSessionLoading.value = false
 }
 
 async function submitNewSession() {
-  if (!newSessionMessage.value.trim()) {
-    ElMessage.warning(t('agentSessions.enterMessage'))
-    return
-  }
   const agentName = store.currentAgent?.name?.replace('workspace-', '') || ''
   if (!agentName) return
 
+  // Native /new parity for Nextcloud: always reset the current channel session first.
+  // Priority:
+  // 1) nextcloud-talk group session
+  // 2) currently selected session
+  // 3) null (detached fallback)
+  const sessions = detail.value?.agent?.sessions || []
+  const nextcloudGroup = sessions.find(
+    s => s?.session_key?.includes('nextcloud-talk:group:')
+  )
+  const selected = sessions.find(s => s.session_id === store.selectedSessionId)
+  const sessionKey = nextcloudGroup?.session_key || selected?.session_key || null
+
   newSessionLoading.value = true
   try {
-    await store.createSession(
-      agentName,
-      newSessionModel.value || null,
-      newSessionMessage.value.trim(),
-      newSessionChannel.value || null
-    )
+    await store.createSession(agentName, sessionKey)
     ElMessage.success(t('agentSessions.sessionCreated'))
     closeNewSession()
     store.loadAgentDetail()
@@ -331,6 +325,51 @@ async function submitNewSession() {
     ElMessage.error(t('agentSessions.createFailed') + ': ' + (e.response?.data?.detail || e.message))
   } finally {
     newSessionLoading.value = false
+  }
+}
+
+// Switch model dialog
+async function openSwitchModel() {
+  if (!store.selectedSessionId) {
+    ElMessage.warning(t('agentSessions.selectSessionFirst'))
+    return
+  }
+  if (!store.availableModels.length) {
+    await store.loadModels()
+  }
+  switchModelId.value = store.defaultModel || ''
+  switchModelVisible.value = true
+}
+
+function closeSwitchModel() {
+  switchModelVisible.value = false
+  switchModelId.value = ''
+  switchModelLoading.value = false
+}
+
+async function submitSwitchModel() {
+  if (!switchModelId.value) return
+  const agentName = store.currentAgent?.name?.replace('workspace-', '') || ''
+  if (!agentName) return
+
+  const sessions = detail.value?.agent?.sessions || []
+  const sess = sessions.find(s => s.session_id === store.selectedSessionId)
+  if (!sess) {
+    ElMessage.error(t('agentSessions.selectSessionFirst'))
+    return
+  }
+
+  switchModelLoading.value = true
+  try {
+    await store.switchModel(agentName, switchModelId.value, sess.session_key)
+    ElMessage.success(t('agentSessions.switchSuccess'))
+    closeSwitchModel()
+    store.loadAgentDetail()
+  } catch (e) {
+    console.error('Failed to switch model:', e)
+    ElMessage.error(t('agentSessions.switchFailed') + ': ' + (e.response?.data?.detail || e.message))
+  } finally {
+    switchModelLoading.value = false
   }
 }
 
@@ -446,13 +485,6 @@ onUnmounted(() => {
   font-weight: 600;
   font-size: 13px;
   color: var(--el-text-color-primary);
-}
-
-.form-hint {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-  line-height: 1.4;
 }
 
 .session-list-scroll {

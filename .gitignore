@@ -20,11 +20,6 @@ memory/
 sessions/
 
 # Internal (not for open-source repo)
-features/
-global-dashboard/
-works/
-works.md
-test-images/
 .claude/
 docker-compose.override.yml
 .superpowers/

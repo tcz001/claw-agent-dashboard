@@ -9,6 +9,15 @@ from ..services import version_db, version_service
 router = APIRouter(tags=["versions"])
 
 
+@router.get("/versions/detail/{version_id}")
+async def get_version_detail(version_id: int):
+    """Get a single version with full content."""
+    version = await version_db.get_version(version_id)
+    if not version:
+        raise HTTPException(status_code=404, detail="Version not found")
+    return version
+
+
 @router.get("/versions/{agent_name}/{file_path:path}")
 async def get_file_versions(
     agent_name: str,
@@ -20,15 +29,6 @@ async def get_file_versions(
     agent_id = await version_db.get_or_create_agent(agent_name)
     versions, total = await version_db.get_versions(agent_id, file_path, limit, offset)
     return {"versions": versions, "total": total}
-
-
-@router.get("/versions/detail/{version_id}")
-async def get_version_detail(version_id: int):
-    """Get a single version with full content."""
-    version = await version_db.get_version(version_id)
-    if not version:
-        raise HTTPException(status_code=404, detail="Version not found")
-    return version
 
 
 class RestoreRequest(BaseModel):

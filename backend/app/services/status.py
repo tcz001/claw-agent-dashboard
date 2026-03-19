@@ -964,35 +964,230 @@ def get_available_models() -> dict:
     }
 
 
-async def create_new_session(agent: str, model: str | None, message: str, session_key: str | None = None) -> dict:
-    """Create a new session by calling the Gateway /v1/responses API.
-    
-    If session_key is provided, binds to an existing channel session (like /new).
-    Otherwise creates a detached session.
+async def create_new_session(agent: str, session_key: str | None = None) -> dict:
+    """Reset a session to match OpenClaw's native /new behavior exactly.
+
+    Native /new does:
+    1. Generate a new sessionId + sessionFile within the SAME session key
+    2. Update sessions.json (clear systemSent, model overrides, etc.)
+    3. Write session header to new .jsonl transcript
+    4. Send bare session reset prompt so agent executes startup sequence
+
+    When session_key is provided, we reset that specific channel session.
+    When omitted, we find the first nextcloud-talk:group session for the agent.
     """
+    import uuid
+    from datetime import datetime, timezone
+
+    agent_dir = Path(AGENTS_DIR) / "agents" / agent
+    sessions_file = agent_dir / "sessions" / "sessions.json"
+
+    if not sessions_file.exists():
+        raise FileNotFoundError(f"sessions.json not found for agent {agent}")
+
+    with open(sessions_file) as f:
+        sessions_data = json.load(f)
+
+    # Find the target session entry
+    target_key = None
+    target_entry = None
+
+    if session_key:
+        # Try exact match first, then fuzzy match
+        input_key = session_key.strip()
+        normalized = input_key
+        if input_key.startswith(f"agent:{agent}:"):
+            normalized = input_key[len(f"agent:{agent}:"):]
+
+        for key, val in sessions_data.items():
+            origin_to = (val.get("origin", {}) or {}).get("to") or ""
+            if (
+                key == input_key
+                or key == f"agent:{agent}:{normalized}"
+                or key.endswith(":" + normalized)
+                or origin_to == input_key
+            ):
+                target_key = key
+                target_entry = val
+                break
+    else:
+        # Default: find first nextcloud-talk:group session
+        for key, val in sessions_data.items():
+            if "nextcloud-talk:group:" in key:
+                target_key = key
+                target_entry = val
+                break
+
+    if target_entry is None:
+        raise ValueError(f"No session found for agent {agent} (key={session_key})")
+
+    # Step 1: Generate new sessionId and sessionFile
+    new_session_id = str(uuid.uuid4())
+    sessions_dir = agent_dir / "sessions"
+    new_session_file_host = str(
+        Path("/home/vagrant/.openclaw/agents") / agent / "sessions" / f"{new_session_id}.jsonl"
+    )
+    new_session_file_local = sessions_dir / f"{new_session_id}.jsonl"
+
+    # Step 2: Update sessions.json — preserve thinkingLevel, verboseLevel,
+    # modelOverride, providerOverride, label (same as native /new)
+    old_entry = dict(target_entry)
+    target_entry["sessionId"] = new_session_id
+    target_entry["sessionFile"] = new_session_file_host
+    target_entry["updatedAt"] = int(time.time() * 1000)
+    target_entry["systemSent"] = False
+    target_entry["abortedLastRun"] = False
+    # Clear runtime model state (will be re-resolved on next run)
+    for clear_key in ["model", "modelProvider", "contextTokens",
+                      "systemPromptReport", "fallbackNoticeSelectedModel",
+                      "fallbackNoticeActiveModel", "fallbackNoticeReason"]:
+        target_entry.pop(clear_key, None)
+
+    sessions_data[target_key] = target_entry
+    with open(sessions_file, "w") as f:
+        json.dump(sessions_data, f, indent=2)
+
+    # Step 3: Write session header to new .jsonl transcript
+    now_iso = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    session_event = {
+        "type": "session",
+        "sessionId": new_session_id,
+        "timestamp": now_iso,
+    }
+    with open(new_session_file_local, "w") as f:
+        f.write(json.dumps(session_event) + "\n")
+
+    # Step 4: Send bare session reset prompt to agent via Gateway API
+    # This is the actual prompt that triggers agent startup
+    now_ms = int(time.time() * 1000)
+    now_dt = datetime.now(timezone.utc)
+    time_str = now_dt.strftime("%A, %B %-d") + now_dt.strftime(", %Y — %-I:%M %p (UTC) / %Y-%m-%d %H:%M UTC")
+    # Match OpenClaw's exact format for appendCronStyleCurrentTimeLine
+    day_suffix = {1: "st", 2: "nd", 3: "rd", 21: "st", 22: "nd", 23: "rd", 31: "st"}.get(now_dt.day, "th")
+    day_with_suffix = f"{now_dt.day}{day_suffix}"
+    time_line = now_dt.strftime(f"%A, %B {day_with_suffix}, %Y — %-I:%M %p (UTC) / %Y-%m-%d %H:%M UTC")
+    reset_prompt = (
+        "A new session was started via /new or /reset. "
+        "Execute your Session Startup sequence now - read the required files "
+        "before responding to the user. Then greet the user in your configured "
+        "persona, if one is provided. Be yourself - use your defined voice, "
+        "mannerisms, and mood. Keep it to 1-3 sentences and ask what they want "
+        "to do. If the runtime model differs from default_model in the system "
+        "prompt, mention the default model. Do not mention internal steps, "
+        "files, tools, or reasoning.\n"
+        f"Current time: {time_line}"
+    )
+
+    # Send as a regular message via Gateway (not /new — that won't trigger reset)
     url = f"{GATEWAY_URL}/v1/responses"
-
-    # If model is specified, prepend /model command to switch model
-    input_text = message
-    if model:
-        input_text = f"/model {model}\n{message}"
-
     body = {
         "model": f"openclaw:{agent}",
-        "input": input_text,
+        "input": reset_prompt,
     }
-
-    headers = {
-        "Content-Type": "application/json",
-    }
+    headers = {"Content-Type": "application/json"}
     if GATEWAY_TOKEN:
         headers["Authorization"] = f"Bearer {GATEWAY_TOKEN}"
-    
-    # Bind to existing channel session if session_key provided
-    if session_key:
-        headers["x-openclaw-session-key"] = session_key
+    # Bind to the session key so Gateway routes to the right session
+    headers["x-openclaw-session-key"] = target_key
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=90.0) as client:
         resp = await client.post(url, json=body, headers=headers)
         resp.raise_for_status()
-        return resp.json()
+        result = resp.json()
+
+    return {
+        "success": True,
+        "previous_session_id": old_entry.get("sessionId"),
+        "new_session_id": new_session_id,
+        "session_key": target_key,
+        "agent_response": result,
+    }
+
+
+async def switch_session_model(agent: str, model: str, session_key: str) -> dict:
+    """Switch model for an existing session by appending a model_change event.
+
+    Accepts either full session key (agent:xxx:...) or channel key
+    (nextcloud-talk:group:xxx / nextcloud-talk:xxx) for robust matching.
+    """
+    import uuid
+    from datetime import datetime, timezone
+
+    agent_dir = Path(AGENTS_DIR) / "agents" / agent
+    sessions_file = agent_dir / "sessions" / "sessions.json"
+
+    if not sessions_file.exists():
+        raise FileNotFoundError(f"sessions.json not found for agent {agent}")
+
+    with open(sessions_file) as f:
+        sessions_data = json.load(f)
+
+    # Normalize input session key variants
+    input_key = (session_key or "").strip()
+    normalized_channel_key = input_key
+    if input_key.startswith(f"agent:{agent}:"):
+        normalized_channel_key = input_key[len(f"agent:{agent}:") :]
+    if normalized_channel_key.startswith("nextcloud-talk:group:"):
+        normalized_origin_to = normalized_channel_key.replace("nextcloud-talk:group:", "nextcloud-talk:", 1)
+    else:
+        normalized_origin_to = normalized_channel_key
+
+    entry = None
+    matched_key = None
+    for key, val in sessions_data.items():
+        origin_to = (val.get("origin", {}) or {}).get("to") or ""
+
+        if (
+            key == input_key
+            or key == f"agent:{agent}:{normalized_channel_key}"
+            or key.endswith(":" + normalized_channel_key)
+            or origin_to == input_key
+            or origin_to == normalized_origin_to
+        ):
+            entry = val
+            matched_key = key
+            break
+
+    if entry is None:
+        raise ValueError(f"Session not found for key: {session_key}")
+
+    session_file = entry.get("sessionFile")
+    if not session_file:
+        raise ValueError(f"No sessionFile in session entry for key: {session_key}")
+
+    # Map host absolute path into mounted /agents path if needed
+    sf_path = Path(session_file)
+    session_file_local = sf_path
+    if not sf_path.exists():
+        parts = sf_path.parts
+        try:
+            agents_idx = next(i for i, p in enumerate(parts) if p == "agents" and i + 1 < len(parts))
+            relative = Path(*parts[agents_idx:])
+            session_file_local = Path(AGENTS_DIR) / relative
+        except StopIteration:
+            session_file_local = sf_path
+
+    if "/" in model:
+        provider, model_id = model.split("/", 1)
+    else:
+        provider = ""
+        model_id = model
+
+    event = {
+        "type": "model_change",
+        "id": uuid.uuid4().hex[:8],
+        "parentId": None,
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "provider": provider,
+        "modelId": model_id,
+    }
+
+    with open(session_file_local, "a") as f:
+        f.write(json.dumps(event) + "\n")
+
+    return {
+        "success": True,
+        "model": model,
+        "session_key": session_key,
+        "matched_session_key": matched_key,
+    }

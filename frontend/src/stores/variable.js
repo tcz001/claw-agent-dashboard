@@ -11,10 +11,13 @@ import {
 export const useVariableStore = defineStore('variable', () => {
   const variables = ref([])
   const loading = ref(false)
-  const scopeFilter = ref('all') // 'all' | 'global' | 'agent'
+  const scopeFilter = ref('all') // 'all' | 'global' | 'agent' | 'blueprint'
   const searchQuery = ref('')
   const dialogVisible = ref(false)
   const editingVariable = ref(null) // null = create mode, object = edit mode
+  const presetScope = ref(null)
+  const presetAgentId = ref(null)
+  const presetName = ref('')
   const impactDialogVisible = ref(false)
   const impactData = ref(null) // { variable, affected_templates, mode: 'update'|'delete' }
 
@@ -24,6 +27,8 @@ export const useVariableStore = defineStore('variable', () => {
       list = list.filter(v => v.scope === 'global')
     } else if (scopeFilter.value === 'agent') {
       list = list.filter(v => v.scope === 'agent')
+    } else if (scopeFilter.value === 'blueprint') {
+      list = list.filter(v => v.scope === 'blueprint')
     }
     if (searchQuery.value) {
       const q = searchQuery.value.toLowerCase()
@@ -44,8 +49,11 @@ export const useVariableStore = defineStore('variable', () => {
     }
   }
 
-  function openCreateDialog() {
+  function openCreateDialog(options = {}) {
     editingVariable.value = null
+    presetScope.value = options.scope || null
+    presetAgentId.value = options.agent_id || null
+    presetName.value = options.name || ''
     dialogVisible.value = true
   }
 
@@ -57,6 +65,9 @@ export const useVariableStore = defineStore('variable', () => {
   function closeDialog() {
     dialogVisible.value = false
     editingVariable.value = null
+    presetScope.value = null
+    presetAgentId.value = null
+    presetName.value = ''
   }
 
   async function saveVariable(data) {
@@ -118,6 +129,7 @@ export const useVariableStore = defineStore('variable', () => {
   return {
     variables, loading, scopeFilter, searchQuery,
     dialogVisible, editingVariable,
+    presetScope, presetAgentId, presetName,
     impactDialogVisible, impactData,
     filteredVariables,
     loadVariables, openCreateDialog, openEditDialog, closeDialog,

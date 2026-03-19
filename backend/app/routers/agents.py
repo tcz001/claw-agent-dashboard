@@ -2,7 +2,7 @@
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
-from ..services import scanner, file_service, version_service, version_db
+from ..services import scanner, file_service, version_service, version_db, template_service
 from ..services.translate import translation_exists
 
 router = APIRouter(tags=["agents"])
@@ -97,6 +97,40 @@ async def save_file(agent_name: str, path: str = Query(...), body: SaveFileReque
         raise HTTPException(status_code=500, detail=f"Save failed: {str(e)}")
 
 
+@router.post("/agents/{agent_name}/file/detach")
+async def detach_file_from_blueprint(agent_name: str, path: str = Query(...)):
+    """Detach a file from its blueprint by creating the agent's own template copy."""
+    db = await version_db.get_db()
+    cursor = await db.execute(
+        "SELECT id FROM agents WHERE workspace_name = ?", (agent_name,)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(404, "Agent not found")
+    try:
+        template = await template_service.detach_from_blueprint(row["id"], path)
+        return {"template_id": template["id"], "agent_id": row["id"]}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.post("/agents/{agent_name}/file/restore-blueprint")
+async def restore_file_to_blueprint(agent_name: str, path: str = Query(...)):
+    """Restore a file to its blueprint version, undoing the detach."""
+    db = await version_db.get_db()
+    cursor = await db.execute(
+        "SELECT id FROM agents WHERE workspace_name = ?", (agent_name,)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        raise HTTPException(404, "Agent not found")
+    try:
+        result = await template_service.restore_to_blueprint(row["id"], path)
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
 @router.get("/agents/{agent_name}/derivation-status")
 async def get_derivation_status(agent_name: str):
     """Get blueprint derivation info for an agent."""
@@ -115,36 +149,3 @@ async def get_derivation_status(agent_name: str):
     return status
 
 
-@router.post("/agents/{agent_name}/files/{file_path:path}/resync")
-async def resync_file(agent_name: str, file_path: str):
-    """Restore a file to blueprint sync."""
-    from ..services import blueprint_service
-    # Use read-only lookup — agent must already exist for resync
-    db = await version_db.get_db()
-    cursor = await db.execute(
-        "SELECT id FROM agents WHERE workspace_name = ?", (agent_name,)
-    )
-    row = await cursor.fetchone()
-    if not row:
-        raise HTTPException(404, "Agent not found")
-    try:
-        return await blueprint_service.resync_file(row["id"], file_path)
-    except ValueError as e:
-        raise HTTPException(404, str(e))
-
-
-@router.post("/agents/{agent_name}/resync-all")
-async def resync_all_files(agent_name: str):
-    """Restore ALL files to blueprint sync, removing all overrides."""
-    from ..services import blueprint_service
-    db = await version_db.get_db()
-    cursor = await db.execute(
-        "SELECT id FROM agents WHERE workspace_name = ?", (agent_name,)
-    )
-    row = await cursor.fetchone()
-    if not row:
-        raise HTTPException(404, "Agent not found")
-    try:
-        return await blueprint_service.resync_all_files(row["id"])
-    except ValueError as e:
-        raise HTTPException(404, str(e))

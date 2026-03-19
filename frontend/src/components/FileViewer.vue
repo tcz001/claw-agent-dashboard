@@ -59,6 +59,9 @@
 
     <!-- Version history drawer -->
     <VersionDrawer />
+
+    <!-- Agent variables drawer -->
+    <AgentVariablesDrawer />
   </div>
 </template>
 
@@ -76,6 +79,7 @@ import MarkdownRenderer from './MarkdownRenderer.vue'
 import CodeEditor from './CodeEditor.vue'
 import AgentSessions from './AgentSessions.vue'
 import VersionDrawer from './VersionDrawer.vue'
+import AgentVariablesDrawer from './AgentVariablesDrawer.vue'
 
 const { t } = useI18n()
 const store = useAgentStore()

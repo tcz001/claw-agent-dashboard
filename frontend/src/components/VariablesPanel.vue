@@ -7,7 +7,7 @@
       <div class="scope-filter">
         <el-button-group>
           <el-button
-            v-for="f in ['all', 'global', 'agent']"
+            v-for="f in ['all', 'global', 'agent', 'blueprint']"
             :key="f"
             :type="store.scopeFilter === f ? 'primary' : 'default'"
             size="small"
@@ -50,8 +50,8 @@
       </el-table-column>
       <el-table-column prop="scope" :label="t('management.colScope')" width="160">
         <template #default="{ row }">
-          <el-tag :type="row.scope === 'global' ? 'success' : 'primary'" size="small">
-            {{ row.scope === 'global' ? t('management.scopeGlobal') : agentDisplayName(row) }}
+          <el-tag :type="scopeTagType(row.scope)" size="small">
+            {{ scopeDisplayName(row) }}
           </el-tag>
         </template>
       </el-table-column>
@@ -74,17 +74,20 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useVariableStore } from '../stores/variable'
 import { useAgentStore } from '../stores/agent'
+import { useBlueprintStore } from '../stores/blueprint'
 import VariableDialog from './VariableDialog.vue'
 import ImpactTreeDialog from './ImpactTreeDialog.vue'
 
 const { t } = useI18n()
 const store = useVariableStore()
 const agentStore = useAgentStore()
+const blueprintStore = useBlueprintStore()
 
 onMounted(async () => {
   await Promise.all([
     store.loadVariables(),
     agentStore.loadAgents(),
+    blueprintStore.loadBlueprints(),
   ])
 })
 
@@ -92,6 +95,24 @@ function agentDisplayName(row) {
   if (!row.agent_id) return ''
   const agent = agentStore.agents.find(a => a.id === row.agent_id)
   return agent ? agent.display_name : `Agent #${row.agent_id}`
+}
+
+function blueprintDisplayName(row) {
+  if (!row.agent_id) return ''
+  const bp = blueprintStore.blueprints.find(b => b.agent_id === row.agent_id)
+  return bp ? bp.name : `Blueprint #${row.agent_id}`
+}
+
+function scopeTagType(scope) {
+  if (scope === 'global') return 'success'
+  if (scope === 'blueprint') return 'warning'
+  return 'primary'
+}
+
+function scopeDisplayName(row) {
+  if (row.scope === 'global') return t('management.scopeGlobal')
+  if (row.scope === 'blueprint') return blueprintDisplayName(row)
+  return agentDisplayName(row)
 }
 
 async function handleDelete(row) {

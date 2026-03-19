@@ -69,7 +69,7 @@
         <el-button
           v-if="variableCount > 0"
           size="small"
-          @click="variablesDrawerVisible = true"
+          @click="openVariablesDrawer()"
         >
           {{ t('management.viewVariables') }} ({{ variableCount }})
         </el-button>
@@ -161,7 +161,7 @@
       v-model="variablesDrawerVisible"
       :title="t('management.viewVariables')"
       direction="rtl"
-      size="380px"
+      size="420px"
     >
       <div class="variables-drawer-content">
         <div
@@ -172,6 +172,22 @@
           <div class="var-group-header">
             <span class="var-name">!{<span>{{ varInfo.name }}</span>}</span>
             <span class="var-file-count">({{ varInfo.source_files.length }})</span>
+          </div>
+          <div class="var-value-row">
+            <template v-if="blueprintVarValues[varInfo.name]">
+              <code class="var-current-value">
+                {{ blueprintVarValues[varInfo.name].type === 'secret' ? '******' : blueprintVarValues[varInfo.name].value }}
+              </code>
+              <el-button size="small" text @click="editBlueprintVar(blueprintVarValues[varInfo.name])">
+                {{ t('management.editVar') }}
+              </el-button>
+            </template>
+            <template v-else>
+              <el-tag size="small" type="info">{{ t('management.notSet') }}</el-tag>
+              <el-button size="small" text type="primary" @click="createBlueprintVar(varInfo.name)">
+                {{ t('management.setDefault') }}
+              </el-button>
+            </template>
           </div>
           <div class="var-source-files">
             <div
@@ -186,9 +202,17 @@
           </div>
         </div>
         <div v-if="variableCount === 0" class="no-variables">
-          No variables found in template files.
+          {{ t('management.noVariablesInTemplates') }}
         </div>
+        <el-button
+          class="new-var-btn"
+          size="small"
+          @click="createBlueprintVar()"
+        >
+          {{ t('management.newVariable') }}
+        </el-button>
       </div>
+      <VariableDialog />
     </el-drawer>
 
     <!-- Version History Drawer -->
@@ -347,13 +371,18 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useBlueprintStore } from '../stores/blueprint'
 import { useAgentStore } from '../stores/agent'
+import { useVariableStore } from '../stores/variable'
+import { fetchVariablesByScope } from '../api'
 import CodeEditor from './CodeEditor.vue'
 import DeriveAgentDialog from './DeriveAgentDialog.vue'
 import BlueprintDiffView from './BlueprintDiffView.vue'
+import VariableDialog from './VariableDialog.vue'
 
 const { t } = useI18n()
 const store = useBlueprintStore()
 const agentStore = useAgentStore()
+const variableStore = useVariableStore()
+const blueprintVarValues = ref({})
 
 // Local state
 const newName = ref('')
@@ -588,6 +617,43 @@ function handleVarFileClick(filePath) {
   variablesDrawerVisible.value = false
   store.selectFile(filePath)
 }
+
+async function loadBlueprintVariables() {
+  if (!store.currentBlueprint?.agent_id) return
+  try {
+    const vars = await fetchVariablesByScope('blueprint', store.currentBlueprint.agent_id)
+    const map = {}
+    for (const v of vars) {
+      map[v.name] = v
+    }
+    blueprintVarValues.value = map
+  } catch {
+    blueprintVarValues.value = {}
+  }
+}
+
+async function openVariablesDrawer() {
+  variablesDrawerVisible.value = true
+  await loadBlueprintVariables()
+}
+
+function editBlueprintVar(variable) {
+  variableStore.openEditDialog(variable)
+}
+
+function createBlueprintVar(name = '') {
+  variableStore.openCreateDialog({
+    scope: 'blueprint',
+    agent_id: store.currentBlueprint?.agent_id,
+    name,
+  })
+}
+
+watch(() => variableStore.dialogVisible, async (visible) => {
+  if (!visible && variablesDrawerVisible.value) {
+    await loadBlueprintVariables()
+  }
+})
 
 function getPendingCount(blueprintId) {
   const bp = store.pendingChangesSummary.blueprints.find(b => b.blueprint_id === blueprintId)
@@ -912,6 +978,28 @@ async function handleRestoreVersion(versionNum) {
   font-size: 14px;
   text-align: center;
   padding: 32px 0;
+}
+.var-value-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 4px 8px;
+}
+.var-current-value {
+  font-family: monospace;
+  font-size: 12px;
+  color: #606266;
+  background: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.new-var-btn {
+  margin-top: 16px;
+  width: 100%;
 }
 
 /* Version history drawer */

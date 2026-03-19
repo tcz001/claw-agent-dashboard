@@ -136,6 +136,87 @@ async def batch_apply(template_ids: list[int]) -> list[dict]:
     return results
 
 
+async def detach_from_blueprint(agent_id: int, file_path: str) -> dict:
+    """Detach a file from blueprint by creating the agent's own template copy.
+
+    If the agent is derived and doesn't have its own template for this file,
+    copy the blueprint's template content into a new template owned by the agent,
+    and record an override entry.
+    """
+    derivation = await version_db.get_derivation_by_agent_id(agent_id)
+    if not derivation:
+        raise ValueError("Agent is not derived from any blueprint")
+
+    # Check if agent already has its own template (already detached)
+    own_template = await version_db.get_template_by_path(agent_id, file_path)
+    if own_template:
+        return own_template
+
+    # Get blueprint template content
+    bp = await version_db.get_blueprint(derivation["blueprint_id"])
+    if not bp:
+        raise ValueError("Blueprint not found")
+
+    bp_template = await version_db.get_template_by_path(bp["agent_id"], file_path)
+    if not bp_template:
+        raise ValueError(f"Blueprint has no template for {file_path}")
+
+    # Create agent's own template as a copy of blueprint's
+    new_template = await version_db.create_template(
+        agent_id=agent_id,
+        file_path=file_path,
+        content=bp_template["content"],
+        base_template_id=bp_template["id"],
+    )
+
+    # Record override
+    await version_db.add_override(derivation["id"], file_path)
+
+    return new_template
+
+
+async def restore_to_blueprint(agent_id: int, file_path: str) -> dict:
+    """Restore a file to its blueprint version, undoing the detach.
+
+    Overwrites the agent's file with blueprint content, removes the agent's
+    own template record and override entry, and creates a version record.
+    """
+    derivation = await version_db.get_derivation_by_agent_id(agent_id)
+    if not derivation:
+        raise ValueError("Agent is not derived from any blueprint")
+
+    # Get blueprint info and template
+    bp = await version_db.get_blueprint(derivation["blueprint_id"])
+    if not bp:
+        raise ValueError("Blueprint not found")
+
+    bp_template = await version_db.get_template_by_path(bp["agent_id"], file_path)
+    if not bp_template:
+        raise ValueError(f"Blueprint has no template for {file_path}")
+
+    # Render blueprint template and write to agent's file on disk
+    await _render_and_write(agent_id, file_path, bp_template["content"])
+
+    # Delete agent's own template record (if any)
+    await version_db.delete_template_by_path(agent_id, file_path)
+
+    # Remove override entry
+    await version_db.remove_override(derivation["id"], file_path)
+
+    # Create version record for the restore
+    content_hash = version_db.compute_hash(bp_template["content"])
+    await version_db.create_version(
+        agent_id=agent_id,
+        file_path=file_path,
+        content=bp_template["content"],
+        content_hash=content_hash,
+        source="restore",
+        commit_msg="Restored to blueprint",
+    )
+
+    return {"restored": True}
+
+
 async def delete_template(template_id: int) -> bool:
     return await version_db.delete_template(template_id)
 

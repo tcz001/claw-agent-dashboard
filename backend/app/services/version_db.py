@@ -491,6 +491,17 @@ async def delete_template(template_id: int) -> bool:
     return cursor.rowcount > 0
 
 
+async def delete_template_by_path(agent_id: int, file_path: str) -> bool:
+    """Delete a template record by agent_id and file_path."""
+    db = await get_db()
+    cursor = await db.execute(
+        "DELETE FROM templates WHERE agent_id = ? AND file_path = ?",
+        (agent_id, file_path),
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
 async def find_templates_referencing_variable(var_name: str) -> list[dict]:
     """Find all templates whose content contains !{var_name}."""
     db = await get_db()

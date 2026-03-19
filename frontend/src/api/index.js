@@ -63,8 +63,11 @@ export const fetchSessionMessages = (agentName, sessionId, offset = 0, limit = 5
 
 // Models & New Session
 export const fetchModels = () => api.get('/status/models').then(r => r.data)
-export const createNewSession = (agent, model, message, sessionKey) =>
-  api.post('/status/session/new', { agent, model, message, session_key: sessionKey }).then(r => r.data)
+export const createNewSession = (agent, sessionKey = null) =>
+  api.post('/status/session/new', { agent, session_key: sessionKey }).then(r => r.data)
+
+export const switchSessionModel = (agent, model, sessionKey) =>
+  api.post('/status/session/model', { agent, model, session_key: sessionKey }).then(r => r.data)
 
 // Settings
 export const fetchSettings = () => api.get('/settings').then(r => r.data)
@@ -125,8 +128,9 @@ export const deriveAgent = (id, data) => api.post(`/blueprints/${id}/derive`, da
 
 // Agent derivation status
 export const fetchDerivationStatus = (agentName) => api.get(`/agents/${agentName}/derivation-status`).then(r => r.data)
-export const resyncFile = (agentName, filePath) => api.post(`/agents/${agentName}/files/${filePath}/resync`).then(r => r.data)
-export const resyncAll = (agentName) => api.post(`/agents/${agentName}/resync-all`).then(r => r.data)
+// Agent file detach/restore from blueprint
+export const detachFromBlueprint = (agentName, path) => api.post(`/agents/${agentName}/file/detach`, null, { params: { path } }).then(r => r.data)
+export const restoreToBlueprint = (agentName, path) => api.post(`/agents/${agentName}/file/restore-blueprint`, null, { params: { path } }).then(r => r.data)
 
 // Blueprint pending changes (filesystem sync)
 export const fetchPendingChangesSummary = () => api.get('/blueprints/pending-changes').then(r => r.data)

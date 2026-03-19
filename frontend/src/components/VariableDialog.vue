@@ -21,14 +21,16 @@
         </el-radio-group>
       </el-form-item>
       <el-form-item :label="t('management.varScope')">
-        <el-radio-group v-model="form.scope" @change="onScopeChange">
+        <el-radio-group v-model="form.scope" @change="onScopeChange" :disabled="store.presetScope !== null">
           <el-radio value="global">{{ t('management.scopeGlobal') }}</el-radio>
           <el-radio value="agent">{{ t('management.filterAgent') }}</el-radio>
+          <el-radio value="blueprint">{{ t('management.filterBlueprint') }}</el-radio>
         </el-radio-group>
         <el-select
           v-if="form.scope === 'agent'"
           v-model="form.agent_id"
           :placeholder="t('management.selectAgent')"
+          :disabled="store.presetScope !== null"
           style="margin-left: 12px; width: 200px"
         >
           <el-option
@@ -36,6 +38,20 @@
             :key="agent.id"
             :label="agent.display_name"
             :value="agent.id"
+          />
+        </el-select>
+        <el-select
+          v-if="form.scope === 'blueprint'"
+          v-model="form.agent_id"
+          :placeholder="t('management.selectBlueprint')"
+          :disabled="store.presetScope !== null"
+          style="margin-left: 12px; width: 200px"
+        >
+          <el-option
+            v-for="bp in blueprintStore.blueprints"
+            :key="bp.agent_id"
+            :label="bp.name"
+            :value="bp.agent_id"
           />
         </el-select>
       </el-form-item>
@@ -67,10 +83,12 @@ import { useI18n } from 'vue-i18n'
 import { ElMessage } from 'element-plus'
 import { useVariableStore } from '../stores/variable'
 import { useAgentStore } from '../stores/agent'
+import { useBlueprintStore } from '../stores/blueprint'
 
 const { t } = useI18n()
 const store = useVariableStore()
 const agentStore = useAgentStore()
+const blueprintStore = useBlueprintStore()
 const saving = ref(false)
 
 const form = ref({
@@ -94,7 +112,14 @@ watch(() => store.dialogVisible, (visible) => {
         description: store.editingVariable.description || '',
       }
     } else {
-      form.value = { name: '', value: '', type: 'text', scope: 'global', agent_id: null, description: '' }
+      form.value = {
+        name: store.presetName || '',
+        value: '',
+        type: 'text',
+        scope: store.presetScope || 'global',
+        agent_id: store.presetAgentId || null,
+        description: '',
+      }
     }
   }
 })
