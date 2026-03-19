@@ -37,13 +37,21 @@
       </div>
 
       <!-- View mode -->
-      <div v-else class="view-wrapper">
+      <div v-else ref="viewWrapperRef" class="view-wrapper">
         <MarkdownRenderer
           v-if="store.displayLanguage === 'markdown'"
+          ref="markdownRef"
           :content="store.displayContent"
         />
         <div v-else class="code-view">
-          <pre><code v-html="highlightedCode"></code></pre>
+          <pre class="code-view-pre"><div
+            v-for="line in highlightedLines"
+            :key="line.num"
+            class="code-line"
+            :class="{ 'highlight-fade': line.num === highlightLineNum }"
+            :data-line="line.num"
+            v-html="line.html || '&nbsp;'"
+          ></div></pre>
         </div>
       </div>
 
@@ -80,6 +88,8 @@ const { t } = useI18n()
 const store = useAgentStore()
 const templateStore = useTemplateStore()
 
+const viewWrapperRef = ref(null)
+const markdownRef = ref(null)
 const variableMap = ref({})
 
 // Load variables when template loads (for CodeEditor hover tooltips)
@@ -100,31 +110,106 @@ watch(() => templateStore.currentTemplate, async (tmpl) => {
   }
 })
 
-const highlightedCode = computed(() => {
-  if (!store.currentFile) return ''
+// Tag-balancing line splitter for hljs output
+function splitHtmlLines(html) {
+  const rawLines = html.split('\n')
+  const result = []
+  let openTags = [] // stack of '<span class="...">' strings
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const line = rawLines[i]
+    // Prepend carried-over open tags, will close them at end
+    const prefix = openTags.join('')
+
+    // Scan this line for <span> opens and </span> closes to update stack
+    const tagRegex = /<(\/?)span([^>]*)>/g
+    let match
+    while ((match = tagRegex.exec(line)) !== null) {
+      if (match[1] === '/') {
+        openTags.pop()
+      } else {
+        openTags.push(`<span${match[2]}>`)
+      }
+    }
+
+    // Close all currently-open spans at end of this line (visual only)
+    result.push({
+      num: i + 1,
+      html: prefix + line + '</span>'.repeat(openTags.length),
+    })
+    // openTags carries forward to next line (re-opened via prefix)
+  }
+  return result
+}
+
+const highlightedLines = computed(() => {
+  if (!store.currentFile) return []
   const lang = store.displayLanguage
   const code = store.displayContent
+  let html
   try {
     if (hljs.getLanguage(lang)) {
-      return hljs.highlight(code, { language: lang }).value
+      html = hljs.highlight(code, { language: lang }).value
+    } else {
+      html = hljs.highlightAuto(code).value
     }
-  } catch {}
-  return hljs.highlightAuto(code).value
+  } catch {
+    html = hljs.highlightAuto(code).value
+  }
+  return splitHtmlLines(html)
 })
+
+const highlightLineNum = ref(null)
+let highlightTimeout = null
 
 watch(() => store.targetLineNumber, async (lineNum) => {
   if (!lineNum) return
   await nextTick()
-  // For code view: scroll to approximate position
-  const codeView = document.querySelector('.code-view pre code')
-  if (codeView) {
-    const lineHeight = 22.4  // approximate line height in px (14px font * 1.6 line-height)
-    const scrollContainer = document.querySelector('.view-wrapper')
-    if (scrollContainer) {
-      scrollContainer.scrollTop = (lineNum - 1) * lineHeight - scrollContainer.clientHeight / 3
+  if (highlightTimeout) clearTimeout(highlightTimeout)
+
+  if (store.displayLanguage === 'markdown') {
+    // Markdown mode: find matching text in rendered DOM
+    const container = markdownRef.value?.$el
+    if (container && store.fileSearchQuery) {
+      const query = store.fileSearchQuery.toLowerCase()
+      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT)
+      let targetNode = null
+      while (walker.nextNode()) {
+        if (walker.currentNode.textContent.toLowerCase().includes(query)) {
+          targetNode = walker.currentNode
+          break
+        }
+      }
+      if (targetNode) {
+        // Find the closest block-level parent to highlight
+        let block = targetNode.parentElement
+        const blockTags = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'LI', 'BLOCKQUOTE', 'PRE', 'TR', 'DIV', 'TABLE'])
+        while (block && block !== container && !blockTags.has(block.tagName)) {
+          block = block.parentElement
+        }
+        if (block && block !== container) {
+          block.scrollIntoView({ block: 'center' })
+          block.classList.add('md-highlight-fade')
+          highlightTimeout = setTimeout(() => {
+            block.classList.remove('md-highlight-fade')
+            highlightTimeout = null
+          }, 4000)
+        }
+      }
     }
+  } else {
+    // Code view mode
+    highlightLineNum.value = lineNum
+    const el = document.querySelector(`.code-line[data-line="${lineNum}"]`)
+    if (el) {
+      el.scrollIntoView({ block: 'center' })
+    }
+    highlightTimeout = setTimeout(() => {
+      highlightLineNum.value = null
+      highlightTimeout = null
+    }, 4000)
   }
-  // Clear after scrolling
+
   store.targetLineNumber = null
 }, { flush: 'post' })
 </script>
@@ -177,6 +262,16 @@ watch(() => store.targetLineNumber, async (lineNum) => {
   white-space: pre-wrap;
   word-break: break-word;
 }
+.code-line {
+  min-height: 1em;
+}
+@keyframes highlight-fade {
+  0%   { background: rgba(255, 213, 79, 0.5); }
+  100% { background: transparent; }
+}
+.code-line.highlight-fade {
+  animation: highlight-fade 4s ease-out forwards;
+}
 .file-footer {
   padding: 8px 16px;
   background: #f5f7fa;
@@ -194,5 +289,16 @@ watch(() => store.targetLineNumber, async (lineNum) => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+</style>
+
+<style>
+/* Markdown highlight (unscoped so it applies inside MarkdownRenderer's v-html) */
+@keyframes md-highlight-fade {
+  0%   { background: rgba(255, 213, 79, 0.5); }
+  100% { background: transparent; }
+}
+.md-highlight-fade {
+  animation: md-highlight-fade 4s ease-out forwards;
 }
 </style>

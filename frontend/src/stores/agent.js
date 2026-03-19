@@ -114,6 +114,8 @@ export const useAgentStore = defineStore('agent', () => {
 
   // Target line number for FileViewer line jump (from search results)
   const targetLineNumber = ref(null)
+  // Target message index for SessionMessages jump (from session search results)
+  const targetMessageIndex = ref(null)
 
   const filteredAgents = computed(() => {
     if (!selectedBlueprint.value) return agents.value
@@ -1013,5 +1015,7 @@ export const useAgentStore = defineStore('agent', () => {
     checkSearchCapabilities,
     // Target line for FileViewer
     targetLineNumber,
+    // Target message for SessionMessages
+    targetMessageIndex,
   }
 })

@@ -122,7 +122,9 @@
               :current-page="store.sessionPage"
               :page-size="store.sessionPageSize"
               :loading="currentLoading"
+              :target-message-index="store.targetMessageIndex"
               @page-change="onPageChange"
+              @highlight-done="store.targetMessageIndex = null"
             />
           </template>
           <div v-else class="empty-panel">
@@ -421,8 +423,9 @@ function handleSessionSearch() {
 }
 
 function openSessionSearchResult(result) {
-  store.selectSession(result.session_id)
+  store.selectedSessionId = result.session_id
   const page = Math.floor(result.message_index / store.sessionPageSize) + 1
+  store.targetMessageIndex = result.message_index
   store.loadSessionPage(result.session_id, page, false)
 }
 

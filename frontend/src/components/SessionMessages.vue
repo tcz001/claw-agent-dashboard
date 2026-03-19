@@ -220,7 +220,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, nextTick } from 'vue'
+import { reactive, ref, watch, nextTick } from 'vue'
 import { Loading, View, Setting, ArrowRight, ArrowDown, CircleCloseFilled, CircleCheckFilled } from '@element-plus/icons-vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
@@ -232,11 +232,39 @@ const props = defineProps({
   currentPage: { type: Number, default: 1 },
   pageSize: { type: Number, default: 50 },
   loading: { type: Boolean, default: false },
+  targetMessageIndex: { type: Number, default: null },
 })
 
-const emit = defineEmits(['page-change'])
+const emit = defineEmits(['page-change', 'highlight-done'])
 
 const messagesListRef = ref(null)
+
+// Search result highlight: watch both targetMessageIndex and messages
+// to handle async page load timing
+let msgHighlightTimeout = null
+
+watch(
+  [() => props.targetMessageIndex, () => props.messages],
+  async ([msgIndex, msgs]) => {
+    if (msgIndex == null || !msgs.length) return
+    await nextTick()
+
+    if (msgHighlightTimeout) clearTimeout(msgHighlightTimeout)
+
+    const localIdx = msgIndex % props.pageSize
+    const items = messagesListRef.value?.querySelectorAll('.message-item')
+    if (items && items[localIdx]) {
+      items[localIdx].classList.add('highlight-fade')
+      items[localIdx].scrollIntoView({ block: 'center', behavior: 'smooth' })
+      msgHighlightTimeout = setTimeout(() => {
+        items[localIdx]?.classList.remove('highlight-fade')
+        msgHighlightTimeout = null
+      }, 4000)
+    }
+    emit('highlight-done')
+  },
+  { flush: 'post' }
+)
 
 // markdown-it instance (shared with MarkdownRenderer pattern)
 const md = new MarkdownIt({
@@ -467,6 +495,14 @@ function onPageChange(page) {
 
 .message-item:last-child {
   margin-bottom: 0;
+}
+
+@keyframes highlight-fade {
+  0%   { background: rgba(255, 213, 79, 0.5); }
+  100% { background: transparent; }
+}
+.message-item.highlight-fade {
+  animation: highlight-fade 4s ease-out forwards;
 }
 
 .message-user {
