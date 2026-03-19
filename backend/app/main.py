@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from .routers import agents, translate, settings, global_skills, status, versions, variables, templates, blueprints
+from .routers import agents, translate, settings, global_skills, status, versions, variables, templates, blueprints, agent_changes
 from .services import version_db, change_detector, blueprint_service
 
 
@@ -45,6 +45,7 @@ app.include_router(versions.router, prefix="/api")
 app.include_router(variables.router, prefix="/api")
 app.include_router(templates.router, prefix="/api")
 app.include_router(blueprints.router, prefix="/api")
+app.include_router(agent_changes.router, prefix="/api")
 
 # Serve frontend static files (production build)
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"

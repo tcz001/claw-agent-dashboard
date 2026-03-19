@@ -134,6 +134,27 @@ async def init_db():
         ON blueprint_pending_changes(blueprint_id, file_path)
         WHERE status = 'pending'
     """)
+
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS agent_pending_changes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER NOT NULL REFERENCES agents(id),
+            file_path TEXT NOT NULL,
+            change_type TEXT NOT NULL CHECK(change_type IN ('modified', 'added')),
+            old_content TEXT,
+            new_content TEXT,
+            old_hash TEXT,
+            new_hash TEXT,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'accepted', 'rejected')),
+            detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP
+        )
+    """)
+    await db.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_agent_pending_changes_unique
+            ON agent_pending_changes(agent_id, file_path)
+            WHERE status = 'pending'
+    """)
     await db.commit()
 
     # Partial unique indexes for variables (added after executescript)
@@ -873,3 +894,96 @@ async def delete_pending_changes_for_blueprint(blueprint_id: int) -> int:
     )
     await db.commit()
     return cursor.rowcount
+
+
+# ---------------------------------------------------------------------------
+# Agent Pending Changes CRUD
+# ---------------------------------------------------------------------------
+
+async def upsert_agent_pending_change(
+    agent_id: int, file_path: str, change_type: str,
+    old_content: str | None, new_content: str | None,
+    old_hash: str | None, new_hash: str | None,
+) -> dict | None:
+    """Create or update an agent pending change.
+
+    Returns None if the change was previously rejected with the same new_hash.
+    """
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT id FROM agent_pending_changes WHERE agent_id = ? AND file_path = ? AND status = 'pending'",
+        (agent_id, file_path),
+    )
+    existing = await cursor.fetchone()
+
+    if existing:
+        await db.execute(
+            """UPDATE agent_pending_changes
+               SET change_type = ?, old_content = ?, new_content = ?,
+                   old_hash = ?, new_hash = ?, detected_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (change_type, old_content, new_content, old_hash, new_hash, existing["id"]),
+        )
+        await db.commit()
+        change_id = existing["id"]
+    else:
+        rejected = await db.execute(
+            """SELECT id FROM agent_pending_changes
+               WHERE agent_id = ? AND file_path = ? AND status = 'rejected' AND new_hash = ?""",
+            (agent_id, file_path, new_hash),
+        )
+        if await rejected.fetchone():
+            return None
+
+        cursor = await db.execute(
+            """INSERT INTO agent_pending_changes
+               (agent_id, file_path, change_type, old_content, new_content, old_hash, new_hash)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (agent_id, file_path, change_type, old_content, new_content, old_hash, new_hash),
+        )
+        await db.commit()
+        change_id = cursor.lastrowid
+
+    cursor = await db.execute("SELECT * FROM agent_pending_changes WHERE id = ?", (change_id,))
+    return dict(await cursor.fetchone())
+
+
+async def delete_agent_pending_change_by_file(agent_id: int, file_path: str) -> bool:
+    """Delete pending agent change for a specific file."""
+    db = await get_db()
+    cursor = await db.execute(
+        "DELETE FROM agent_pending_changes WHERE agent_id = ? AND file_path = ? AND status = 'pending'",
+        (agent_id, file_path),
+    )
+    await db.commit()
+    return cursor.rowcount > 0
+
+
+async def get_agent_pending_change(change_id: int) -> dict | None:
+    db = await get_db()
+    cursor = await db.execute("SELECT * FROM agent_pending_changes WHERE id = ?", (change_id,))
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def list_agent_pending_changes(agent_id: int) -> list[dict]:
+    """List pending changes for an agent."""
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT * FROM agent_pending_changes WHERE agent_id = ? AND status = 'pending' ORDER BY detected_at",
+        (agent_id,),
+    )
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+async def resolve_agent_pending_change(change_id: int, status: str) -> bool:
+    """Mark an agent pending change as accepted or rejected."""
+    if status not in ("accepted", "rejected"):
+        raise ValueError(f"Invalid status: {status}")
+    db = await get_db()
+    cursor = await db.execute(
+        "UPDATE agent_pending_changes SET status = ?, resolved_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'pending'",
+        (status, change_id),
+    )
+    await db.commit()
+    return cursor.rowcount > 0

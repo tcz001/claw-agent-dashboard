@@ -17,6 +17,14 @@
         >
           {{ t('mainPanel.files') }}
         </div>
+        <div
+          class="tab-item"
+          :class="{ active: store.activeTab === 'changes' }"
+          @click="store.setActiveTab('changes')"
+        >
+          {{ t('mainPanel.changes') }}
+          <span v-if="store.pendingChangesCount > 0" class="badge">{{ store.pendingChangesCount }}</span>
+        </div>
       </div>
 
       <!-- Tab content — v-show keeps both alive -->
@@ -25,6 +33,9 @@
       </div>
       <div class="tab-content" v-show="store.activeTab === 'files'">
         <FilesPanel />
+      </div>
+      <div class="tab-content" v-show="store.activeTab === 'changes'">
+        <AgentChangesPanel />
       </div>
     </template>
 
@@ -41,6 +52,7 @@ import { useI18n } from 'vue-i18n'
 import { useAgentStore } from '../stores/agent'
 import AgentSessions from './AgentSessions.vue'
 import FilesPanel from './FilesPanel.vue'
+import AgentChangesPanel from './AgentChangesPanel.vue'
 
 const { t } = useI18n()
 const store = useAgentStore()
@@ -74,6 +86,18 @@ const store = useAgentStore()
 .tab-item.active {
   color: #409eff;
   border-bottom-color: #409eff;
+}
+.badge {
+  background: #f56c6c;
+  color: #fff;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  min-width: 16px;
+  text-align: center;
+  display: inline-block;
+  line-height: 16px;
 }
 .tab-content {
   flex: 1;

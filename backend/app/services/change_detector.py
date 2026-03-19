@@ -51,6 +51,8 @@ class HashScanDetector(ChangeDetector):
             await asyncio.sleep(self._interval)
 
     async def _scan_all(self):
+        from ..services.template_engine import render_template
+
         agents = list_agents()
         for agent in agents:
             agent_name = agent["name"]
@@ -62,19 +64,15 @@ class HashScanDetector(ChangeDetector):
             tracked = await version_db.get_all_tracked_files(agent_id)
             tracked_map = {t["file_path"]: t["current_hash"] for t in tracked}
 
-            # Collect managed files: core files + skills
+            # Collect managed files: core files + .md + skills
             managed_files = []
-            # Core files
             for fname in CORE_FILES:
                 fpath = agent_dir / fname
                 if fpath.exists() and fpath.is_file():
                     managed_files.append((fname, fpath))
-            # Other .md files in root
             for fpath in agent_dir.iterdir():
                 if fpath.is_file() and fpath.suffix.lower() == ".md" and fpath.name not in CORE_FILES:
                     managed_files.append((fpath.name, fpath))
-
-            # Skills files (recursive)
             skills_dir = agent_dir / "skills"
             if skills_dir.exists():
                 for root, _dirs, files in os.walk(skills_dir):
@@ -83,7 +81,14 @@ class HashScanDetector(ChangeDetector):
                         rel_path = str(full_path.relative_to(agent_dir))
                         managed_files.append((rel_path, full_path))
 
-            # Check each file
+            # Look up derivation info once per agent
+            derivation = await version_db.get_derivation_by_agent_id(agent_id)
+            blueprint_agent_id = None
+            if derivation:
+                bp = await version_db.get_blueprint(derivation["blueprint_id"])
+                if bp:
+                    blueprint_agent_id = bp["agent_id"]
+
             seen_paths = set()
             for rel_path, full_path in managed_files:
                 seen_paths.add(rel_path)
@@ -95,28 +100,71 @@ class HashScanDetector(ChangeDetector):
                 content_hash = version_db.compute_hash(content)
 
                 if rel_path in tracked_map:
-                    # Known file — check if changed
                     if content_hash != tracked_map[rel_path]:
-                        likely_openclaw = self._check_likely_openclaw(agent_name)
-                        await version_service.record_external_change(
-                            agent_id=agent_id,
-                            file_path=rel_path,
-                            content=content,
-                            content_hash=content_hash,
-                            likely_openclaw=likely_openclaw,
+                        # Hash changed — check template
+                        await self._handle_file_change(
+                            agent_id, agent_name, rel_path, content, content_hash,
+                            derivation, blueprint_agent_id,
                         )
                 else:
-                    # New file — create initial version
+                    # New file — create initial version + tracked entry
                     await version_db.create_version(
-                        agent_id=agent_id,
-                        file_path=rel_path,
-                        content=content,
-                        content_hash=content_hash,
+                        agent_id=agent_id, file_path=rel_path,
+                        content=content, content_hash=content_hash,
                         source="external",
                     )
                     await version_db.upsert_tracked_file(agent_id, rel_path, content_hash)
 
         await self._scan_blueprints()
+
+    async def _handle_file_change(
+        self, agent_id, agent_name, file_path, disk_content, disk_hash,
+        derivation, blueprint_agent_id,
+    ):
+        """Handle a detected file change: create pending change or record version."""
+        from ..services.template_engine import render_template
+        from ..services import variable_service
+
+        # Look up template via full chain: agent-own → blueprint inherited
+        template = await version_db.get_template_by_path(agent_id, file_path)
+        if not template and derivation and blueprint_agent_id:
+            template = await version_db.get_template_by_path(blueprint_agent_id, file_path)
+
+        if template:
+            # Render template with correct variable scope
+            if derivation and blueprint_agent_id:
+                variables = await variable_service.get_raw_variables_for_derived_agent(
+                    agent_id, blueprint_agent_id
+                )
+            else:
+                variables = await variable_service.get_raw_variables_for_agent(agent_id)
+
+            result = render_template(template["content"], variables)
+            rendered_content = result.content
+
+            if disk_content == rendered_content:
+                # Disk matches template — clear any pending change
+                await version_db.delete_agent_pending_change_by_file(agent_id, file_path)
+            else:
+                # Disk differs from template — create pending change
+                rendered_hash = version_db.compute_hash(rendered_content)
+                await version_db.upsert_agent_pending_change(
+                    agent_id=agent_id, file_path=file_path,
+                    change_type="modified",
+                    old_content=rendered_content, new_content=disk_content,
+                    old_hash=rendered_hash, new_hash=disk_hash,
+                )
+
+            # Update tracked hash so detector won't re-process next cycle
+            await version_db.upsert_tracked_file(agent_id, file_path, disk_hash)
+        else:
+            # No template — lazy-load: record version directly
+            likely_openclaw = self._check_likely_openclaw(agent_name)
+            await version_service.record_external_change(
+                agent_id=agent_id, file_path=file_path,
+                content=disk_content, content_hash=disk_hash,
+                likely_openclaw=likely_openclaw,
+            )
 
     async def _scan_blueprints(self):
         """Scan blueprint directories, compare against DB templates."""

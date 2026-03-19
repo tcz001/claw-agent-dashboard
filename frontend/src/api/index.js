@@ -139,6 +139,13 @@ export const acceptPendingChange = (bpId, changeId) => api.post(`/blueprints/${b
 export const rejectPendingChange = (bpId, changeId) => api.post(`/blueprints/${bpId}/pending-changes/${changeId}/reject`).then(r => r.data)
 export const acceptAllPendingChanges = (bpId) => api.post(`/blueprints/${bpId}/pending-changes/accept-all`).then(r => r.data)
 
+// Agent pending changes (disk file sync)
+export const fetchAgentPendingChanges = (agentName) => api.get(`/agents/${agentName}/pending-changes`).then(r => r.data)
+export const acceptAgentPendingChange = (agentName, changeId) => api.post(`/agents/${agentName}/pending-changes/${changeId}/accept`).then(r => r.data)
+export const rejectAgentPendingChange = (agentName, changeId) => api.post(`/agents/${agentName}/pending-changes/${changeId}/reject`).then(r => r.data)
+export const acceptAllAgentPendingChanges = (agentName) => api.post(`/agents/${agentName}/pending-changes/accept-all`).then(r => r.data)
+export const rejectAllAgentPendingChanges = (agentName) => api.post(`/agents/${agentName}/pending-changes/reject-all`).then(r => r.data)
+
 // Blueprint file versions
 export const fetchBlueprintFileVersions = (bpId, filePath) => api.get(`/blueprints/${bpId}/files/${filePath}/versions`).then(r => r.data)
 export const fetchBlueprintFileVersion = (bpId, filePath, versionNum) => api.get(`/blueprints/${bpId}/files/${filePath}/versions/${versionNum}`).then(r => r.data)

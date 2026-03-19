@@ -26,6 +26,11 @@ import {
   restoreVersion as apiRestoreVersion,
   fetchVersionDiff as apiFetchVersionDiff,
   fetchAgentVariables as apiFetchAgentVariables,
+  fetchAgentPendingChanges,
+  acceptAgentPendingChange,
+  rejectAgentPendingChange,
+  acceptAllAgentPendingChanges,
+  rejectAllAgentPendingChanges,
 } from '../api'
 import { useTemplateStore } from './template'
 
@@ -92,6 +97,10 @@ export const useAgentStore = defineStore('agent', () => {
   // Sidebar collapse
   const sidebarCollapsed = ref(false)
 
+  // Agent pending changes (disk file sync)
+  const pendingChanges = ref([])
+  const pendingLoading = ref(false)
+
   const filteredAgents = computed(() => {
     if (!selectedBlueprint.value) return agents.value
     return agents.value.filter(a => a.blueprint_name === selectedBlueprint.value)
@@ -101,6 +110,8 @@ export const useAgentStore = defineStore('agent', () => {
     const names = [...new Set(agents.value.map(a => a.blueprint_name).filter(Boolean))]
     return names.sort()
   })
+
+  const pendingChangesCount = computed(() => pendingChanges.value.length)
 
   // Actions
   async function loadAgents() {
@@ -145,6 +156,7 @@ export const useAgentStore = defineStore('agent', () => {
       skillFilesMap.value = {}
       await loadAgentDetail()
       await loadDerivationStatus()
+      startPendingPolling()
 
       // 4. Restore per-agent state if it exists
       const saved = agentStates[agent.name]
@@ -445,6 +457,74 @@ export const useAgentStore = defineStore('agent', () => {
     const file = derivationStatus.value.files?.find(f => f.file_path === filePath)
     if (!file) return null  // file not in blueprint
     return !file.is_overridden
+  }
+
+  // Agent pending changes actions
+  async function loadPendingChanges() {
+    if (!currentAgent.value) return
+    pendingLoading.value = true
+    try {
+      const data = await fetchAgentPendingChanges(currentAgent.value.name)
+      pendingChanges.value = data.changes || []
+    } catch (e) {
+      console.error('Failed to load pending changes:', e)
+      pendingChanges.value = []
+    } finally {
+      pendingLoading.value = false
+    }
+  }
+
+  async function acceptChange(changeId) {
+    if (!currentAgent.value) return
+    const change = pendingChanges.value.find(c => c.id === changeId)
+    await acceptAgentPendingChange(currentAgent.value.name, changeId)
+    await loadPendingChanges()
+    if (change && currentFile.value && change.file_path === currentFile.value.path) {
+      await selectFile(currentFile.value.path)
+    }
+  }
+
+  async function rejectChange(changeId) {
+    if (!currentAgent.value) return
+    const change = pendingChanges.value.find(c => c.id === changeId)
+    await rejectAgentPendingChange(currentAgent.value.name, changeId)
+    await loadPendingChanges()
+    if (change && currentFile.value && change.file_path === currentFile.value.path) {
+      await selectFile(currentFile.value.path)
+    }
+  }
+
+  async function acceptAllChanges() {
+    if (!currentAgent.value) return
+    await acceptAllAgentPendingChanges(currentAgent.value.name)
+    await loadPendingChanges()
+    if (currentFile.value) {
+      await selectFile(currentFile.value.path)
+    }
+  }
+
+  async function rejectAllChanges() {
+    if (!currentAgent.value) return
+    await rejectAllAgentPendingChanges(currentAgent.value.name)
+    await loadPendingChanges()
+    if (currentFile.value) {
+      await selectFile(currentFile.value.path)
+    }
+  }
+
+  let pendingPollTimer = null
+
+  function startPendingPolling() {
+    stopPendingPolling()
+    loadPendingChanges()
+    pendingPollTimer = setInterval(loadPendingChanges, 30000)
+  }
+
+  function stopPendingPolling() {
+    if (pendingPollTimer) {
+      clearInterval(pendingPollTimer)
+      pendingPollTimer = null
+    }
   }
 
   // Status dashboard actions
@@ -842,5 +922,16 @@ export const useAgentStore = defineStore('agent', () => {
     loadAgentVariables,
     openVariablesDrawer,
     closeVariablesDrawer,
+    // Agent pending changes
+    pendingChanges,
+    pendingLoading,
+    pendingChangesCount,
+    loadPendingChanges,
+    acceptChange,
+    rejectChange,
+    acceptAllChanges,
+    rejectAllChanges,
+    startPendingPolling,
+    stopPendingPolling,
   }
 })
