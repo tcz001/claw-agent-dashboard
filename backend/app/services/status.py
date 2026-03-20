@@ -1024,9 +1024,19 @@ async def create_new_session(agent: str, session_key: str | None = None) -> dict
     # Step 1: Generate new sessionId and sessionFile
     new_session_id = str(uuid.uuid4())
     sessions_dir = agent_dir / "sessions"
-    new_session_file_host = str(
-        Path("/home/vagrant/.openclaw/agents") / agent / "sessions" / f"{new_session_id}.jsonl"
-    )
+    # Compute the host-side session file path from AGENTS_HOST_DIR.
+    # AGENTS_HOST_DIR mirrors the host path that maps to AGENTS_DIR inside
+    # the container (e.g. "~/.openclaw" on the host → "/agents" in container).
+    agents_host = os.environ.get("AGENTS_HOST_DIR", "")
+    if agents_host:
+        new_session_file_host = str(
+            Path(agents_host) / "agents" / agent / "sessions" / f"{new_session_id}.jsonl"
+        )
+    else:
+        # Fallback: construct from AGENTS_DIR (works when running outside container)
+        new_session_file_host = str(
+            Path(AGENTS_DIR) / "agents" / agent / "sessions" / f"{new_session_id}.jsonl"
+        )
     new_session_file_local = sessions_dir / f"{new_session_id}.jsonl"
 
     # Step 2: Update sessions.json — preserve thinkingLevel, verboseLevel,

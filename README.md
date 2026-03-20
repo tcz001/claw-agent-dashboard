@@ -9,9 +9,13 @@ A web dashboard for monitoring and managing [OpenClaw](https://github.com/opencl
 ## Features
 
 - **Agent Workspace File Browser** — Browse agent workspace files with syntax highlighting and in-browser editing
+- **Agent Blueprint System** — Template-based agent creation with variable inheritance and import from existing agents
+- **Agent Variables & Management** — Define text and secret variables per agent, with scope support
 - **Session Viewer** — View agent session history with paginated message display
+- **Full-Text Search** — Search across workspace files and session messages (Elasticsearch optional)
 - **File Translation** — Translate any file to Chinese using a built-in LLM-powered translation service
 - **File Version History** — Compare file versions with diff view and one-click restore
+- **Disk File Sync** — Detect and review on-disk file changes with diff comparison
 - **System Metrics Dashboard** — Monitor CPU, memory, disk, and network usage in real time
 - **Gateway Health Monitoring** — Track OpenClaw Gateway status and connectivity
 - **Global Skills Browser** — Explore globally installed OpenClaw skills
@@ -28,7 +32,7 @@ A web dashboard for monitoring and managing [OpenClaw](https://github.com/opencl
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/openclaw/claw-agent-dashboard.git
+git clone https://github.com/boydfd/claw-agent-dashboard.git
 cd claw-agent-dashboard
 
 # 2. Copy and edit the environment file

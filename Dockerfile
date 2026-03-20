@@ -17,9 +17,9 @@ FROM python:3.12-slim
 ARG PIP_INDEX_URL
 WORKDIR /app
 
-# Create a non-root user with uid=1000 to match host vagrant user.
+# Create a non-root user with uid=1000 to match the typical host user.
 # This ensures files written to bind-mounted host directories (e.g. /agents)
-# are owned by uid=1000 (vagrant) rather than root.
+# are owned by uid=1000 rather than root.
 RUN groupadd -g 1000 appuser && useradd -u 1000 -g 1000 -m appuser
 
 # Install Python dependencies
