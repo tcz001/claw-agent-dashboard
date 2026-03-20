@@ -5,7 +5,7 @@ services:
       args:
         NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
         PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple/}
-    # Run as uid=1000 to match the typical host user, so files written to
+    # Run as uid=1000 to match host the typical host user, so files written to
     # bind-mounted directories (e.g. /agents → ~/.openclaw) are owned by
     # the host user (uid=1000) instead of root.
     user: "1000:1000"

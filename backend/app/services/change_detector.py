@@ -64,22 +64,30 @@ class HashScanDetector(ChangeDetector):
             tracked = await version_db.get_all_tracked_files(agent_id)
             tracked_map = {t["file_path"]: t["current_hash"] for t in tracked}
 
-            # Collect managed files: core files + .md + skills
+            # Collect managed files: core files + all non-hidden top-level
+            # files + known managed subdirectories (skills/, docker/).
+            # Excludes user-data dirs like develops/, memory/, backup/.
+            MANAGED_SUBDIRS = {"skills", "docker"}
             managed_files = []
             for fname in CORE_FILES:
                 fpath = agent_dir / fname
                 if fpath.exists() and fpath.is_file():
                     managed_files.append((fname, fpath))
+            core_set = set(CORE_FILES)
             for fpath in agent_dir.iterdir():
-                if fpath.is_file() and fpath.suffix.lower() == ".md" and fpath.name not in CORE_FILES:
+                if fpath.name.startswith('.'):
+                    continue
+                if fpath.is_file() and fpath.name not in core_set:
                     managed_files.append((fpath.name, fpath))
-            skills_dir = agent_dir / "skills"
-            if skills_dir.exists():
-                for root, _dirs, files in os.walk(skills_dir):
-                    for fname in files:
-                        full_path = Path(root) / fname
-                        rel_path = str(full_path.relative_to(agent_dir))
-                        managed_files.append((rel_path, full_path))
+                elif fpath.is_dir() and fpath.name in MANAGED_SUBDIRS:
+                    for root, dirs, files in os.walk(fpath):
+                        dirs[:] = [d for d in dirs if not d.startswith('.')]
+                        for fname in files:
+                            if fname.startswith('.'):
+                                continue
+                            full_path = Path(root) / fname
+                            rel_path = str(full_path.relative_to(agent_dir))
+                            managed_files.append((rel_path, full_path))
 
             # Look up derivation info once per agent
             derivation = await version_db.get_derivation_by_agent_id(agent_id)
@@ -225,18 +233,27 @@ class HashScanDetector(ChangeDetector):
                     )
 
     def _collect_blueprint_files(self, bp_dir: Path) -> list[tuple[str, Path]]:
-        """Collect managed files from a blueprint directory."""
+        """Collect managed files from a blueprint directory.
+
+        Scans all top-level files and recursively walks all subdirectories
+        (skills/, docker/, etc.), skipping hidden directories (dot-prefixed).
+        """
         files = []
         for f in bp_dir.iterdir():
-            if f.is_file() and f.suffix.lower() == '.md':
+            if f.name.startswith('.'):
+                continue
+            if f.is_file():
                 files.append((f.name, f))
-        skills_dir = bp_dir / "skills"
-        if skills_dir.exists():
-            for root, _, filenames in os.walk(skills_dir):
-                for fname in filenames:
-                    full = Path(root) / fname
-                    rel = str(full.relative_to(bp_dir))
-                    files.append((rel, full))
+            elif f.is_dir():
+                for root, dirs, filenames in os.walk(f):
+                    # Skip hidden subdirectories
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+                    for fname in filenames:
+                        if fname.startswith('.'):
+                            continue
+                        full = Path(root) / fname
+                        rel = str(full.relative_to(bp_dir))
+                        files.append((rel, full))
         return files
 
     async def _upsert_pending_change(
