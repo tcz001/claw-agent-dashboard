@@ -95,7 +95,7 @@
               </div>
               <div class="sc-meta">
                 <span class="sc-age">{{ t('agentSessions.ago', { time: sess.age_human }) }}</span>
-                <span v-if="sess.model" class="sc-model mono">{{ shortModel(sess.model) }}</span>
+                <span v-if="sess.model" class="sc-model mono">{{ shortModel(sess.model, sess.provider) }}</span>
               </div>
               <div class="sc-stats" v-if="sess.total_tokens > 0">
                 <span class="mono">{{ formatTokens(sess.total_tokens) }} {{ t('agentSessions.tokens') }}</span>
@@ -311,9 +311,11 @@ function formatTokens(count) {
   return String(count)
 }
 
-function shortModel(model) {
+function shortModel(model, provider) {
   if (!model) return ''
-  return model.replace(/^claude-/, '')
+  const short = model.replace(/^claude-/, '')
+  if (provider) return `${provider}/${short}`
+  return short
 }
 
 function onSelectSession(sess) {

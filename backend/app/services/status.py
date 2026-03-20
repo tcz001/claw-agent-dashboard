@@ -182,6 +182,7 @@ def _extract_session_detail(session_jsonl_path: Path) -> dict:
     """
     detail = {
         "model": None,
+        "provider": None,
         "input_tokens": 0,
         "output_tokens": 0,
         "cache_creation_tokens": 0,
@@ -212,6 +213,7 @@ def _extract_session_detail(session_jsonl_path: Path) -> dict:
         total_cache_creation = 0
         total_cache_read = 0
         model = None
+        provider = None
         turns = 0
 
         for line in lines:
@@ -232,6 +234,12 @@ def _extract_session_detail(session_jsonl_path: Path) -> dict:
                 model = msg["model"]
             elif "model" in entry:
                 model = entry["model"]
+
+            # Look for provider info
+            if "provider" in msg:
+                provider = msg["provider"]
+            elif "provider" in entry:
+                provider = entry["provider"]
 
             # Look for usage data — OpenClaw uses {input, output, cacheRead, cacheWrite, totalTokens}
             usage = msg.get("usage") or entry.get("usage")
@@ -260,6 +268,7 @@ def _extract_session_detail(session_jsonl_path: Path) -> dict:
 
         detail.update({
             "model": model,
+            "provider": provider,
             "input_tokens": total_input,
             "output_tokens": total_output,
             "cache_creation_tokens": total_cache_creation,
@@ -378,6 +387,7 @@ def get_session_messages(agent_name: str, session_id: str, offset: int = 0, limi
                 content_raw = msg.get("content", "")
                 timestamp = entry.get("timestamp", "")
                 model = msg.get("model")
+                provider = msg.get("provider") or entry.get("provider")
                 usage = msg.get("usage")
 
                 parsed_content = _parse_message_content(content_raw)
@@ -387,6 +397,7 @@ def get_session_messages(agent_name: str, session_id: str, offset: int = 0, limi
                     "role": role,
                     "content": parsed_content,
                     "model": model,
+                    "provider": provider,
                     "usage": usage,
                 })
 
@@ -555,6 +566,7 @@ def get_agent_detail(agent_name: str) -> dict:
         if jsonl_path:
             detail = _extract_session_detail(jsonl_path)
             sess["model"] = detail["model"]
+            sess["provider"] = detail["provider"]
             sess["input_tokens"] = detail["input_tokens"]
             sess["output_tokens"] = detail["output_tokens"]
             sess["total_tokens"] = detail["total_tokens"]
@@ -571,6 +583,7 @@ def get_agent_detail(agent_name: str) -> dict:
                 sess["token_summary"] = None
         else:
             sess["model"] = None
+            sess["provider"] = None
             sess["input_tokens"] = 0
             sess["output_tokens"] = 0
             sess["total_tokens"] = 0

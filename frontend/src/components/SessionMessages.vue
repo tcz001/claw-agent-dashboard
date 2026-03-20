@@ -35,7 +35,7 @@
             <el-tag :type="roleTagType(msg.role)" size="small" class="role-tag">
               {{ msg.role }}
             </el-tag>
-            <span v-if="msg.model" class="message-model mono">{{ msg.model }}</span>
+            <span v-if="msg.model" class="message-model mono">{{ msg.provider ? `${msg.provider}/${msg.model}` : msg.model }}</span>
             <span v-if="msg.usage" class="message-usage mono">
               {{ formatTokenCount(msg.usage.input || 0) }}in / {{ formatTokenCount(msg.usage.output || 0) }}out
             </span>
