@@ -159,35 +159,87 @@
           </el-button>
         </div>
 
-        <!-- Right: Code editor -->
+        <!-- Right: Code editor with optional version panel -->
         <div class="editor-panel">
           <template v-if="store.currentFile">
-            <div class="editor-file-header">
-              <code class="current-file-path">{{ store.currentFile.file_path }}</code>
-              <div class="editor-file-actions">
-                <el-button
-                  size="small"
-                  @click="store.openVersionDrawer(store.currentFile.file_path)"
-                >
-                  {{ t('management.versionHistory') }}
-                </el-button>
-                <el-button
-                  type="primary"
-                  size="small"
-                  :loading="store.saving"
-                  @click="handleSave"
-                >
-                  {{ t('common.save') }}
-                </el-button>
+            <div class="editor-with-version-panel">
+              <div class="editor-content-wrapper">
+                <div class="editor-file-header">
+                  <code class="current-file-path">{{ store.currentFile.file_path }}</code>
+                  <div class="editor-file-actions">
+                    <el-button
+                      size="small"
+                      @click="store.openVersionDrawer(store.currentFile.file_path)"
+                    >
+                      {{ t('management.versionHistory') }}
+                    </el-button>
+                    <el-button
+                      type="primary"
+                      size="small"
+                      :loading="store.saving"
+                      @click="handleSave"
+                    >
+                      {{ t('common.save') }}
+                    </el-button>
+                  </div>
+                </div>
+
+                <!-- Version view mode bar -->
+                <div v-if="versionViewState.mode !== 'normal'" class="version-mode-bar">
+                  <span v-if="versionViewState.mode === 'view'">
+                    {{ t('versionPanel.viewingVersion', { n: versionViewState.versionNum }) }}
+                  </span>
+                  <span v-else>
+                    {{ t('versionPanel.comparingVersion', { n: versionViewState.versionNum }) }}
+                  </span>
+                  <el-button size="small" @click="exitVersionMode">
+                    {{ t('versionPanel.back') }}
+                  </el-button>
+                </div>
+
+                <!-- Compare mode -->
+                <VersionDiffView
+                  v-if="versionViewState.mode === 'compare'"
+                  :diffLines="versionViewState.diffLines"
+                  class="version-compare-area"
+                />
+
+                <!-- View mode -->
+                <CodeEditor
+                  v-else-if="versionViewState.mode === 'view'"
+                  :value="versionViewState.content"
+                  :language="editorLanguage"
+                  :readOnly="true"
+                  class="version-view-area"
+                />
+
+                <!-- Normal mode -->
+                <CodeEditor
+                  v-else
+                  v-model:value="store.editContent"
+                  :language="editorLanguage"
+                  :variable-map="variableMap"
+                  :target-line="blueprintTargetLine"
+                  @highlight-done="blueprintTargetLine = null"
+                />
               </div>
+
+              <!-- Version History Panel -->
+              <VersionHistoryPanel
+                v-if="store.versionDrawerOpen"
+                :versions="store.versionList"
+                :loading="store.versionLoading"
+                :hasMore="store.versionList.length < store.versionTotal"
+                :fetchContent="handleFetchVersionContent"
+                :onRestore="handleBpRestoreVersion"
+                :latestContent="store.currentFile?.content || ''"
+                @view="onVersionView"
+                @compare="onVersionCompare"
+                @close="closeBlueprintVersionHistory"
+                @restore="onBlueprintVersionRestored"
+                @load-more="store.fetchMoreVersions()"
+              />
             </div>
-            <CodeEditor
-              v-model:value="store.editContent"
-              :language="editorLanguage"
-              :variable-map="variableMap"
-              :target-line="blueprintTargetLine"
-              @highlight-done="blueprintTargetLine = null"
-            />
           </template>
           <div v-else class="no-file-selected">
             <p>{{ t('management.noFiles') }}</p>
@@ -262,72 +314,6 @@
         </el-button>
       </div>
       <VariableDialog />
-    </el-drawer>
-
-    <!-- Version History Drawer -->
-    <el-drawer
-      :model-value="store.versionDrawerOpen"
-      :title="t('management.versionHistoryTitle', { name: store.versionFilePath })"
-      direction="rtl"
-      size="460px"
-      :before-close="store.closeVersionDrawer"
-      :append-to-body="true"
-    >
-      <!-- Preview mode -->
-      <div v-if="store.versionPreviewContent !== null" class="version-preview">
-        <div class="version-preview-header">
-          <el-button size="small" @click="store.versionPreviewContent = null; store.versionPreviewNum = null">
-            &larr; {{ t('management.versionBackToList') }}
-          </el-button>
-          <span class="version-preview-title">{{ t('management.versionPreviewTitle', { num: store.versionPreviewNum }) }}</span>
-        </div>
-        <pre class="version-preview-content">{{ store.versionPreviewContent }}</pre>
-      </div>
-
-      <!-- Version list -->
-      <div v-else>
-        <div v-if="store.versionLoading" class="version-loading">
-          Loading...
-        </div>
-        <div v-else-if="store.versionList.length === 0" class="version-empty">
-          {{ t('management.versionNoHistory') }}
-        </div>
-        <div v-else class="version-list">
-          <div
-            v-for="ver in store.versionList"
-            :key="ver.id"
-            class="version-item"
-            :class="{ expanded: expandedVersionId === ver.id }"
-            @click="expandedVersionId = expandedVersionId === ver.id ? null : ver.id"
-          >
-            <div class="version-header">
-              <span class="version-num">{{ t('management.versionNum', { num: ver.version_num }) }}</span>
-              <span class="version-time">{{ formatVersionTime(ver.created_at) }}</span>
-              <el-tag :type="versionSourceTagType(ver.source)" size="small" class="version-source-tag">
-                {{ ver.source }}
-              </el-tag>
-            </div>
-            <div v-if="ver.commit_msg || ver.ai_summary" class="version-summary">
-              {{ ver.commit_msg || ver.ai_summary }}
-            </div>
-            <div v-if="expandedVersionId === ver.id" class="version-actions" @click.stop>
-              <el-button size="small" @click="handleViewVersion(ver.version_num)">
-                {{ t('management.versionView') }}
-              </el-button>
-              <el-popconfirm
-                :title="t('management.versionRestoreConfirm', { num: ver.version_num })"
-                @confirm="handleRestoreVersion(ver.version_num)"
-              >
-                <template #reference>
-                  <el-button size="small" type="warning" :loading="restoringVersion">
-                    {{ t('management.versionRestore') }}
-                  </el-button>
-                </template>
-              </el-popconfirm>
-            </div>
-          </div>
-        </div>
-      </div>
     </el-drawer>
 
     <!-- Create Blueprint Dialog -->
@@ -421,10 +407,12 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useBlueprintStore } from '../stores/blueprint'
 import { useAgentStore } from '../stores/agent'
 import { useVariableStore } from '../stores/variable'
-import { fetchVariablesByScope } from '../api'
+import { fetchVariablesByScope, fetchBlueprintFileVersion } from '../api'
 import CodeEditor from './CodeEditor.vue'
 import DeriveAgentDialog from './DeriveAgentDialog.vue'
 import BlueprintDiffView from './BlueprintDiffView.vue'
+import VersionHistoryPanel from './VersionHistoryPanel.vue'
+import VersionDiffView from './VersionDiffView.vue'
 import VariableDialog from './VariableDialog.vue'
 import { Search, Loading } from '@element-plus/icons-vue'
 
@@ -440,8 +428,52 @@ const newDescription = ref('')
 const addFileDialogVisible = ref(false)
 const newFilePath = ref('')
 const variablesDrawerVisible = ref(false)
-const expandedVersionId = ref(null)
-const restoringVersion = ref(false)
+
+// Version history view state
+const versionViewState = ref({
+  mode: 'normal',
+  versionNum: null,
+  content: null,
+  diffLines: null,
+})
+
+function exitVersionMode() {
+  versionViewState.value = { mode: 'normal', versionNum: null, content: null, diffLines: null }
+}
+
+async function handleFetchVersionContent(version) {
+  const bp = store.currentBlueprint
+  if (!bp) throw new Error('No blueprint selected')
+  const filePath = store.versionFilePath
+  const detail = await fetchBlueprintFileVersion(bp.id, filePath, version.version_num)
+  return detail.content
+}
+
+async function handleBpRestoreVersion(version) {
+  await store.restoreVersion(store.versionFilePath, version.version_num)
+}
+
+function onVersionView({ content, versionNum }) {
+  versionViewState.value = { mode: 'view', versionNum, content, diffLines: null }
+}
+
+function onVersionCompare({ diffLines, versionNum }) {
+  versionViewState.value = { mode: 'compare', versionNum, content: null, diffLines }
+}
+
+function closeBlueprintVersionHistory() {
+  store.closeVersionDrawer()
+  exitVersionMode()
+}
+
+function onBlueprintVersionRestored() {
+  exitVersionMode()
+}
+
+// Reset version view state when switching files
+watch(() => store.currentFile, () => {
+  exitVersionMode()
+})
 
 // File search
 const collapsedSearchFiles = ref(new Set())
@@ -743,50 +775,6 @@ function getPendingCount(blueprintId) {
 function enterDiffView(bp) {
   store.currentBlueprint = bp
   store.viewMode = 'diff'
-}
-
-// Version history helpers
-function formatVersionTime(ts) {
-  if (!ts) return ''
-  const date = new Date(ts + 'Z')
-  const now = new Date()
-  const diffMs = now - date
-  const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 1) return 'just now'
-  if (diffMin < 60) return `${diffMin}m ago`
-  const diffHour = Math.floor(diffMin / 60)
-  if (diffHour < 24) return `${diffHour}h ago`
-  const diffDay = Math.floor(diffHour / 24)
-  if (diffDay < 30) return `${diffDay}d ago`
-  return date.toLocaleDateString()
-}
-
-function versionSourceTagType(source) {
-  if (source === 'dashboard') return 'success'
-  if (source === 'filesystem_sync') return 'warning'
-  if (source === 'restore') return 'info'
-  return ''
-}
-
-async function handleViewVersion(versionNum) {
-  try {
-    await store.viewVersion(store.versionFilePath, versionNum)
-  } catch {
-    ElMessage.error(t('management.versionRestoreFailed'))
-  }
-}
-
-async function handleRestoreVersion(versionNum) {
-  restoringVersion.value = true
-  try {
-    await store.restoreVersion(store.versionFilePath, versionNum)
-    ElMessage.success(t('management.versionRestored', { num: versionNum }))
-    expandedVersionId.value = null
-  } catch {
-    ElMessage.error(t('management.versionRestoreFailed'))
-  } finally {
-    restoringVersion.value = false
-  }
 }
 </script>
 
@@ -1165,89 +1153,32 @@ async function handleRestoreVersion(versionNum) {
   width: 100%;
 }
 
-/* Version history drawer */
-.version-loading,
-.version-empty {
-  text-align: center;
-  padding: 40px 0;
-  color: #909399;
+/* Version history panel integration */
+.editor-with-version-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
-.version-list {
+.editor-content-wrapper {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
 }
-.version-item {
-  padding: 10px 12px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.version-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-.version-item.expanded {
-  background: rgba(255, 255, 255, 0.08);
-}
-.version-header {
+.version-mode-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-.version-num {
-  font-weight: 600;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: rgba(56, 139, 253, 0.1);
+  border-bottom: 1px solid rgba(56, 139, 253, 0.3);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 13px;
-  color: #eee;
-  min-width: 28px;
 }
-.version-time {
-  font-size: 12px;
-  color: #909399;
-}
-.version-source-tag {
-  font-size: 11px;
-}
-.version-summary {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #999;
-  line-height: 1.4;
-}
-.version-actions {
-  margin-top: 8px;
-  display: flex;
-  gap: 8px;
-}
-
-/* Version preview */
-.version-preview {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-.version-preview-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-.version-preview-title {
-  font-weight: 600;
-  font-size: 13px;
-  color: #eee;
-}
-.version-preview-content {
+.version-compare-area, .version-view-area {
   flex: 1;
   overflow: auto;
-  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  margin: 0;
-  padding: 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 6px;
-  color: #ccc;
+  min-height: 0;
 }
 </style>

@@ -163,13 +163,13 @@ async def add_blueprint_file(blueprint_id: int, body: BlueprintFileCreate):
 # ---------------------------------------------------------------------------
 
 @router.get("/{blueprint_id}/files/{file_path:path}/versions")
-async def get_blueprint_file_versions(blueprint_id: int, file_path: str):
+async def get_blueprint_file_versions(blueprint_id: int, file_path: str, limit: int = 20, offset: int = 0):
     """Get version history for a blueprint file."""
     bp = await blueprint_service.get_blueprint(blueprint_id)
     if not bp:
         raise HTTPException(404, "Blueprint not found")
-    versions, total = await version_db.get_versions(bp["agent_id"], file_path)
-    return versions
+    versions, total = await version_db.get_versions(bp["agent_id"], file_path, limit=limit, offset=offset)
+    return {"versions": versions, "total": total}
 
 
 @router.get("/{blueprint_id}/files/{file_path:path}/versions/{version_num}")
