@@ -807,14 +807,21 @@ export const useAgentStore = defineStore('agent', () => {
   }
 
   async function restoreVersion(versionId) {
-    if (!currentAgent.value || !currentFile.value) return
+    if (!currentAgent.value || !currentFile.value) {
+      throw new Error('No agent or file selected')
+    }
     const result = await apiRestoreVersion(
       currentAgent.value.name, currentFile.value.path, versionId
     )
-    // Refresh file content and version list
-    currentFile.value = await fetchFileContent(currentAgent.value.name, currentFile.value.path)
-    editContent.value = currentFile.value.content
-    await fetchVersions()
+    // Refresh file content and version list — don't let refresh failures
+    // mask the successful restore
+    try {
+      currentFile.value = await fetchFileContent(currentAgent.value.name, currentFile.value.path)
+      editContent.value = currentFile.value.content
+      await fetchVersions()
+    } catch (e) {
+      console.warn('Restore succeeded but UI refresh failed:', e)
+    }
     return result
   }
 

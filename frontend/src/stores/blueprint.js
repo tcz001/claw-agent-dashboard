@@ -270,15 +270,23 @@ export const useBlueprintStore = defineStore('blueprint', () => {
   }
 
   async function restoreVersion(filePath, versionNum) {
-    if (!currentBlueprint.value) return
+    if (!currentBlueprint.value) {
+      throw new Error('No blueprint selected')
+    }
     await restoreBlueprintFileVersion(currentBlueprint.value.id, filePath, versionNum)
-    const data = await fetchBlueprintFileVersions(
-      currentBlueprint.value.id, filePath, 20, 0
-    )
-    versionList.value = data.versions
-    versionTotal.value = data.total
-    if (currentFile.value && currentFile.value.file_path === filePath) {
-      await selectFile(currentFile.value.file_path)
+    // Refresh version list and file content — don't let refresh failures
+    // mask the successful restore
+    try {
+      const data = await fetchBlueprintFileVersions(
+        currentBlueprint.value.id, filePath, 20, 0
+      )
+      versionList.value = data.versions
+      versionTotal.value = data.total
+      if (currentFile.value && currentFile.value.file_path === filePath) {
+        await selectFile(currentFile.value.file_path)
+      }
+    } catch (e) {
+      console.warn('Restore succeeded but UI refresh failed:', e)
     }
   }
 

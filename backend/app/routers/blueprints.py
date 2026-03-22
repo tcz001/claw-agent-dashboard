@@ -224,7 +224,7 @@ async def restore_blueprint_file_version(blueprint_id: int, file_path: str, vers
     await version_db.create_version(
         agent_id=bp["agent_id"], file_path=file_path,
         content=version["content"], content_hash=content_hash,
-        source="dashboard", commit_msg=f"Restored to version {version_num}",
+        source="restore", commit_msg=f"Restored to version {version_num}",
     )
 
     return {"restored": True, "version_num": version_num, "file_path": file_path}

@@ -112,7 +112,8 @@ async function handleView(ver) {
     const content = await props.fetchContent(ver)
     emit('view', { content, versionNum: ver.version_num })
   } catch (e) {
-    ElMessage.error(t('versionPanel.restoreFailed'))
+    console.error('View version failed:', e)
+    ElMessage.error(e.message || t('versionPanel.restoreFailed'))
   }
 }
 
@@ -122,7 +123,8 @@ async function handleCompare(ver) {
     const diffLines = computeDiff(content, props.latestContent)
     emit('compare', { diffLines, versionNum: ver.version_num })
   } catch (e) {
-    ElMessage.error(t('versionPanel.restoreFailed'))
+    console.error('Compare version failed:', e)
+    ElMessage.error(e.message || t('versionPanel.restoreFailed'))
   }
 }
 
@@ -132,7 +134,9 @@ async function handleRestore(ver) {
     ElMessage.success(t('versionPanel.restored'))
     emit('restore')
   } catch (e) {
-    ElMessage.error(t('versionPanel.restoreFailed'))
+    console.error('Restore version failed:', e)
+    const detail = e.response?.data?.detail || e.message || t('versionPanel.restoreFailed')
+    ElMessage.error(detail)
   }
 }
 </script>
