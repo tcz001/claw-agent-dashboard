@@ -60,7 +60,6 @@ function navigateToAgent(agentName) {
   background: var(--el-bg-color-overlay);
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 10px;
-  overflow: hidden;
 }
 .card-header {
   display: flex;
@@ -107,4 +106,16 @@ function navigateToAgent(agentName) {
 .dot-error { background: var(--el-color-danger); box-shadow: 0 0 4px var(--el-color-danger); }
 .dot-unknown { background: var(--el-text-color-placeholder); }
 .empty-tip { text-align: center; color: var(--el-text-color-placeholder); padding: 12px; }
+
+@media (max-width: 768px) {
+  .agents-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .agent-mini-card {
+    padding: 8px 10px;
+  }
+  .agent-name {
+    font-size: 12px;
+  }
+}
 </style>
