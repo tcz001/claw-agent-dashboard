@@ -231,7 +231,7 @@
                 :loading="store.versionLoading"
                 :hasMore="store.versionList.length < store.versionTotal"
                 :fetchContent="handleFetchVersionContent"
-                :onRestore="handleBpRestoreVersion"
+                :restoreHandler="handleBpRestoreVersion"
                 :latestContent="store.currentFile?.content || ''"
                 @view="onVersionView"
                 @compare="onVersionCompare"

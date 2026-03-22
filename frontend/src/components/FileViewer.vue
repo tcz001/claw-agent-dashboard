@@ -96,7 +96,7 @@
         :loading="store.versionLoading"
         :hasMore="store.versionList.length < store.versionTotal"
         :fetchContent="handleFetchVersionContent"
-        :onRestore="handleRestoreVersion"
+        :restoreHandler="handleRestoreVersion"
         :latestContent="store.currentFile?.content || ''"
         @view="onVersionView"
         @compare="onVersionCompare"

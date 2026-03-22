@@ -73,7 +73,7 @@ const props = defineProps({
   loading: { type: Boolean, default: false },
   hasMore: { type: Boolean, default: false },
   fetchContent: { type: Function, required: true },
-  onRestore: { type: Function, required: true },
+  restoreHandler: { type: Function, required: true },
   latestContent: { type: String, default: '' },
 })
 
@@ -130,13 +130,12 @@ async function handleCompare(ver) {
 
 async function handleRestore(ver) {
   try {
-    await props.onRestore(ver)
+    await props.restoreHandler(ver)
     ElMessage.success(t('versionPanel.restored'))
     emit('restore')
   } catch (e) {
     console.error('Restore version failed:', e)
-    const detail = e.response?.data?.detail || e.message || t('versionPanel.restoreFailed')
-    ElMessage.error(detail)
+    ElMessage.error(e.message || t('versionPanel.restoreFailed'))
   }
 }
 </script>
